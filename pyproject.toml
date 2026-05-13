@@ -1,0 +1,9 @@
+[project]
+name = "akirs-auto"
+version = "0.1.0"
+description = "Revenue House Internal Tool for Automations"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "playwright>=1.59.0",
+]
