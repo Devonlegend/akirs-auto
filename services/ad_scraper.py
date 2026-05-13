@@ -98,7 +98,7 @@ class AdScraperService:
         """Scrape multiple ads."""
         for i in range(count):
             logger.info(f"Processing ad {i + 1}/{count}")
-            await self.scrape_ad_details(i)
+            await self.scrape_ad_details(i + 2)
 
         return self.scraped_ads
 
