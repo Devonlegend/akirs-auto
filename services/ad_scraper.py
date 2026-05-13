@@ -2,7 +2,7 @@
 
 import logging
 from typing import List, Callable, Optional
-from playwright.sync_api import Page, Browser, BrowserContext
+from playwright.async_api import Page, Browser, BrowserContext
 from pages import FacebookAdsLibraryPage
 from models import AdDetails, SocialLink
 
@@ -17,22 +17,22 @@ class AdScraperService:
         self.facebook_ads_page = FacebookAdsLibraryPage(page)
         self.scraped_ads: List[AdDetails] = []
 
-    def setup(self, countries: List[str] = None, keywords: List[str] = None) -> None:
+    async def setup(self, countries: List[str] = None, keywords: List[str] = None) -> None:
         """Setup the scraper with initial filters."""
-        self.facebook_ads_page.navigate()
+        await self.facebook_ads_page.navigate()
 
         if countries:
             for country in countries:
                 logger.info(f"Selecting country: {country}")
                 logger.info(f"Waiting for country selector to be available...")
                 try:
-                    self.facebook_ads_page.select_country(country)
+                    await self.facebook_ads_page.select_country(country)
                 except Exception as e:
                     logger.error(f"Error selecting country {country}: {e}")
 
         logger.info("Selecting ad category: All ads")
         try:
-            self.facebook_ads_page.select_ad_category("All ads")
+            await self.facebook_ads_page.select_ad_category("All ads")
         except Exception as e:
             logger.error(f"Error selecting ad category: {e}")
 
@@ -40,27 +40,27 @@ class AdScraperService:
             for keyword in keywords:
                 logger.info(f"Searching for keyword: {keyword}")
                 try:
-                    self.facebook_ads_page.search_keyword(keyword)
+                    await self.facebook_ads_page.search_keyword(keyword)
                 except Exception as e:
                     logger.error(f"Error searching keyword {keyword}: {e}")
 
-    def scrape_ad_details(self, ad_index: int = 0) -> Optional[AdDetails]:
+    async def scrape_ad_details(self, ad_index: int = 0) -> Optional[AdDetails]:
         """Scrape details for a specific ad."""
         try:
             logger.info(f"Scraping ad at index {ad_index}")
 
             # Click "See ad details"
-            self.facebook_ads_page.click_see_ad_details(ad_index)
+            await self.facebook_ads_page.click_see_ad_details(ad_index)
 
             # Wait for dialog to open
-            self.page.wait_for_timeout(500)
+            await self.page.wait_for_timeout(500)
 
             # Extract advertiser info
-            advertiser_info = self.facebook_ads_page.get_advertiser_info()
+            advertiser_info = await self.facebook_ads_page.get_advertiser_info()
 
             # Extract social links
             social_links_data = (
-                self.facebook_ads_page.extract_social_links_from_dialog()
+                await self.facebook_ads_page.extract_social_links_from_dialog()
             )
 
             # Convert to SocialLink objects
@@ -89,13 +89,13 @@ class AdScraperService:
             return None
         finally:
             # Close dialog for next iteration
-            self.facebook_ads_page.close_ad_details_dialog()
+            await self.facebook_ads_page.close_ad_details_dialog()
 
-    def scrape_multiple_ads(self, count: int = 5) -> List[AdDetails]:
+    async def scrape_multiple_ads(self, count: int = 5) -> List[AdDetails]:
         """Scrape multiple ads."""
         for i in range(count):
             logger.info(f"Processing ad {i + 1}/{count}")
-            self.scrape_ad_details(i)
+            await self.scrape_ad_details(i)
 
         return self.scraped_ads
 

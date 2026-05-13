@@ -1,7 +1,8 @@
 """Main orchestrator for ad scraping automation."""
 
+import asyncio
 import logging
-from playwright.sync_api import sync_playwright
+from playwright.async_api import async_playwright
 from config import AppConfig
 from services import CSVExportService
 from services.ad_scraper import AdScraperService
@@ -21,15 +22,15 @@ class AdScraperOrchestrator:
         self.scraper = None
         self.export_service = CSVExportService(self.config.output_csv_path)
 
-    def run(self, ad_count: int = 5) -> None:
+    async def run(self, ad_count: int = 5) -> None:
         """Run the complete scraping workflow."""
-        with sync_playwright() as playwright:
+        async with async_playwright() as playwright:
             # Launch browser
-            browser = playwright.chromium.launch(
+            browser = await playwright.chromium.launch(
                 headless=self.config.facebook_ads.headless
             )
-            context = browser.new_context()
-            page = context.new_page()
+            context = await browser.new_context()
+            page = await context.new_page()
 
             try:
                 # Initialize scraper
@@ -37,14 +38,14 @@ class AdScraperOrchestrator:
 
                 # Setup with filters
                 logger.info("Setting up scraper with filters...")
-                self.scraper.setup(
+                await self.scraper.setup(
                     countries=self.config.facebook_ads.countries,
                     keywords=self.config.facebook_ads.keywords,
                 )
 
                 # Scrape ads
                 logger.info(f"Starting to scrape {ad_count} ads...")
-                self.scraper.scrape_multiple_ads(count=ad_count)
+                await self.scraper.scrape_multiple_ads(count=ad_count)
 
                 # Export results
                 logger.info("Exporting results to CSV...")
@@ -56,11 +57,11 @@ class AdScraperOrchestrator:
             except Exception as e:
                 logger.error(f"Error during scraping: {e}", exc_info=True)
             finally:
-                context.close()
-                browser.close()
+                await context.close()
+                await browser.close()
 
 
-def main():
+async def async_main():
     """Main entry point."""
     # Create config with custom settings if needed
     config = AppConfig()
@@ -72,8 +73,10 @@ def main():
 
     # Run orchestrator
     orchestrator = AdScraperOrchestrator(config)
-    orchestrator.run(ad_count=5)  # Scrape 5 ads
+    await orchestrator.run(ad_count=5)  # Scrape 5 ads
 
+def main():
+    asyncio.run(async_main())
 
 if __name__ == "__main__":
     main()
