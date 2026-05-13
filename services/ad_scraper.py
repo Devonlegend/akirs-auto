@@ -24,10 +24,17 @@ class AdScraperService:
         if countries:
             for country in countries:
                 logger.info(f"Selecting country: {country}")
+                logger.info(f"Waiting for country selector to be available...")
                 try:
                     self.facebook_ads_page.select_country(country)
                 except Exception as e:
                     logger.error(f"Error selecting country {country}: {e}")
+
+        logger.info("Selecting ad category: All ads")
+        try:
+            self.facebook_ads_page.select_ad_category("All ads")
+        except Exception as e:
+            logger.error(f"Error selecting ad category: {e}")
 
         if keywords:
             for keyword in keywords:
