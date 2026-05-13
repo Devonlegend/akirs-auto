@@ -108,7 +108,7 @@ class FacebookAdsLibraryPage:
 
     async def click_see_ad_details(self, index: int = 0) -> None:
         """Click on 'See ad details' button for a specific ad."""
-        buttons = self.page.get_by_role("button", name="See ad details")
+        buttons = self.page.locator("div[role='button']:has-text('See ad details')")
         if index < await buttons.count():
             await buttons.nth(index).click()
 

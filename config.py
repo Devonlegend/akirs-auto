@@ -25,7 +25,7 @@ class FacebookAdsConfig:
         if self.countries is None:
             self.countries = ["Nigeria"]
         if self.keywords is None:
-            self.keywords = ["Learn"]
+            self.keywords = ["Uyo"]
 
 
 @dataclass

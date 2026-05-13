@@ -49,6 +49,9 @@ class AdScraperService:
         try:
             logger.info(f"Scraping ad at index {ad_index}")
 
+            #NOTE wait for page to load
+            await self.page.wait_for_timeout(500)
+
             # Click "See ad details"
             await self.facebook_ads_page.click_see_ad_details(ad_index)
 

@@ -69,7 +69,7 @@ async def async_main():
     # Customize if needed
     config.facebook_ads.headless = False  # Set to True for headless mode
     config.facebook_ads.countries = ["Nigeria"]
-    config.facebook_ads.keywords = ["Learn"]
+    config.facebook_ads.keywords = ["Uyo"]
 
     # Run orchestrator
     orchestrator = AdScraperOrchestrator(config)
