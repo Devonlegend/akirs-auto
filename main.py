@@ -52,7 +52,7 @@ async def _run_recon(
         logger.info("No new advertisers — skipping recon")
         return
 
-    from src.akirs.recon.registry import build_default_coordinator  # noqa: PLC0415
+    from akirs.recon.registry import build_default_coordinator  # noqa: PLC0415
 
     coordinator = build_default_coordinator()
     logger.info("Starting Phase 2 recon for %d advertisers", len(new_advertiser_ids))
