@@ -40,6 +40,8 @@ class Settings(BaseSettings):
     apollo_api_key: str | None = None
     opencorporates_api_key: str | None = None
     tomtom_api_key: str | None = None
+    pdl_api_key: str | None = None
+    brave_search_api_key: str | None = None
 
     recon_search_concurrency: int = Field(default=2)
     recon_social_concurrency: int = Field(default=1)

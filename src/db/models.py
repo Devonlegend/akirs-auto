@@ -84,6 +84,9 @@ class Advertiser(Base):
     registry_records: Mapped[list["RegistryRecord"]] = relationship(
         "RegistryRecord", back_populates="advertiser", cascade="all, delete-orphan"
     )
+    warehouse_votes: Mapped[list["WarehouseVote"]] = relationship(
+        "WarehouseVote", back_populates="advertiser", cascade="all, delete-orphan"
+    )
 
 
 class Ad(Base):
@@ -157,3 +160,18 @@ class RegistryRecord(Base):
     found_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     advertiser: Mapped[Advertiser] = relationship("Advertiser", back_populates="registry_records")
+
+
+class WarehouseVote(Base):
+    __tablename__ = "warehouse_votes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    advertiser_id: Mapped[int] = mapped_column(ForeignKey("advertisers.id"), nullable=False, index=True)
+    provider: Mapped[str] = mapped_column(String(32), nullable=False)
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    value: Mapped[str] = mapped_column(Text, nullable=False)
+    confidence: Mapped[float] = mapped_column(Float, default=0.5)
+    raw_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    voted_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    advertiser: Mapped[Advertiser] = relationship("Advertiser", back_populates="warehouse_votes")

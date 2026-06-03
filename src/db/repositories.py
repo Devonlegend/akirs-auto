@@ -9,7 +9,7 @@ from sqlalchemy import select, func
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.models.scraped import (
+from db.models import (
     Ad,
     Advertiser,
     Geography,
