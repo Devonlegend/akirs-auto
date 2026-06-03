@@ -16,9 +16,9 @@ import asyncio
 import logging
 from datetime import datetime, UTC
 
-from src.akirs.config.settings import get_settings
-from src.akirs.db.base import get_session_factory
-from src.akirs.db.repositories import (
+from akirs.config.settings import get_settings
+from akirs.db.base import get_session_factory
+from akirs.db.repositories import (
     AdRepository,
     AdvertiserRepository,
     GeographyRepository,
