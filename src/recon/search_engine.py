@@ -16,10 +16,10 @@ import httpx
 from bs4 import BeautifulSoup
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from akirs.config.settings import get_settings
-from akirs.db.models import Advertiser
-from akirs.recon.base import ReconFindingData, ReconSource
-from akirs.recon.extractors import extract_emails, extract_phones
+from config.settings import get_settings
+from db.models import Advertiser
+from recon.base import ReconFindingData, ReconSource
+from recon.extractors import extract_emails, extract_phones
 
 logger = logging.getLogger(__name__)
 

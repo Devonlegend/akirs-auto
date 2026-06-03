@@ -1,13 +1,13 @@
-from akirs.config.settings import get_settings
-from akirs.recon.base import FallbackReconCoordinator
-from akirs.recon.data_warehouses import DataWarehouseRecon
-from akirs.recon.enrichment_apis import EnrichmentAPIRecon
-from akirs.recon.nominatim import NominatimRecon
-from akirs.recon.places import PlacesEnrichmentRecon
-from akirs.recon.registries import RegistryRecon
-from akirs.recon.search_engine import SearchEngineRecon
-from akirs.recon.social_profiles import SocialProfileRecon
-from akirs.recon.website import WebsiteRecon
+from config.settings import get_settings
+from recon.base import FallbackReconCoordinator
+from recon.data_warehouses import DataWarehouseRecon
+from recon.enrichment_apis import EnrichmentAPIRecon
+from recon.nominatim import NominatimRecon
+from recon.places import PlacesEnrichmentRecon
+from recon.registries import RegistryRecon
+from recon.search_engine import SearchEngineRecon
+from recon.social_profiles import SocialProfileRecon
+from recon.website import WebsiteRecon
 
 
 def build_default_coordinator() -> FallbackReconCoordinator:

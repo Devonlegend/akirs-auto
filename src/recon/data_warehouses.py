@@ -4,8 +4,8 @@ import logging
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from akirs.db.models import Advertiser
-from akirs.recon.base import ReconFindingData, ReconSource
+from db.models import Advertiser
+from recon.base import ReconFindingData, ReconSource
 
 logger = logging.getLogger(__name__)
 

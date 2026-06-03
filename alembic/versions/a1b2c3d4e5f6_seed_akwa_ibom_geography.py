@@ -10,7 +10,7 @@ from typing import Sequence, Union
 from alembic import op
 import sqlalchemy as sa
 
-from akirs.config.geography import all_entries
+from config.geography import all_entries
 
 revision: str = "a1b2c3d4e5f6"
 down_revision: Union[str, None] = "e39c96d4d538"

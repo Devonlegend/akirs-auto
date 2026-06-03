@@ -4,7 +4,7 @@ from collections.abc import AsyncIterator
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
 
-from akirs.config.settings import get_settings
+from config.settings import get_settings
 
 
 class Base(DeclarativeBase):

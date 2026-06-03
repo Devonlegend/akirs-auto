@@ -16,10 +16,10 @@ import httpx
 from playwright.async_api import Error as PlaywrightError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from akirs.config.settings import get_settings
-from akirs.db.models import Advertiser, RegistryRecord
-from akirs.recon.base import ReconFindingData, ReconSource
-from akirs.scrapers.browser import launch_browser
+from config.settings import get_settings
+from db.models import Advertiser, RegistryRecord
+from recon.base import ReconFindingData, ReconSource
+from scrapers.browser import launch_browser
 
 logger = logging.getLogger(__name__)
 

@@ -7,8 +7,8 @@ from collections.abc import AsyncIterator
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from akirs.db.base import Base
-from akirs.db import models  # noqa: F401 — register tables
+from db.base import Base
+from db import models  # noqa: F401 — register tables
 
 
 @pytest_asyncio.fixture

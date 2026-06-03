@@ -1,8 +1,8 @@
 import pytest
 
-from akirs.db.models import Advertiser
-from akirs.recon.base import ReconCoordinator, ReconFindingData, ReconSource
-from akirs.recon.registry import build_default_coordinator
+from db.models import Advertiser
+from recon.base import ReconCoordinator, ReconFindingData, ReconSource
+from recon.registry import build_default_coordinator
 
 
 class _FakeSource(ReconSource):

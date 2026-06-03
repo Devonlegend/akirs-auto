@@ -2,7 +2,7 @@
 
 from fastapi import FastAPI
 
-from akirs.api.routes import advertisers, geography, health, jobs
+from api.routes import advertisers, geography, health, jobs
 
 
 def create_app() -> FastAPI:

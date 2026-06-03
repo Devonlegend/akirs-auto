@@ -21,9 +21,9 @@ from urllib.parse import quote_plus
 import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from akirs.config.settings import get_settings
-from akirs.db.models import Advertiser
-from akirs.recon.base import ReconFindingData, ReconSource
+from config.settings import get_settings
+from db.models import Advertiser
+from recon.base import ReconFindingData, ReconSource
 
 logger = logging.getLogger(__name__)
 

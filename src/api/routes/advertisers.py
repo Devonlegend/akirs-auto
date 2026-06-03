@@ -6,10 +6,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from akirs.api.deps import db_session
-from akirs.api.schemas import AdvertiserOut, ReconFindingOut, SocialLinkOut
-from akirs.db.models import Advertiser, ReconFinding
-from akirs.exporters import CSVExportService
+from api.deps import db_session
+from api.schemas import AdvertiserOut, ReconFindingOut, SocialLinkOut
+from db.models import Advertiser, ReconFinding
+from exporters import CSVExportService
 
 router = APIRouter(prefix="/advertisers", tags=["advertisers"])
 

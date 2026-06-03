@@ -1,6 +1,6 @@
 import pytest
 
-from akirs.db.repositories import AdvertiserRepository, ReconRepository, SocialLinkRepository
+from db.repositories import AdvertiserRepository, ReconRepository, SocialLinkRepository
 
 
 @pytest.mark.asyncio

@@ -5,9 +5,9 @@ from logging.config import fileConfig
 from sqlalchemy import engine_from_config, pool
 from alembic import context
 
-from akirs.config.settings import get_settings
-from akirs.db.base import Base
-from akirs.db import models  # noqa: F401 — ensure models are registered
+from config.settings import get_settings
+from db.base import Base
+from db import models  # noqa: F401 — ensure models are registered
 
 config = context.config
 

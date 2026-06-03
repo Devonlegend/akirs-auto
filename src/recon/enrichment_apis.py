@@ -13,10 +13,10 @@ import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from akirs.config.settings import get_settings
-from akirs.db.models import Advertiser, SocialLink
-from akirs.recon.base import ReconFindingData, ReconSource
-from akirs.recon.extractors import extract_domain
+from config.settings import get_settings
+from db.models import Advertiser, SocialLink
+from recon.base import ReconFindingData, ReconSource
+from recon.extractors import extract_domain
 
 logger = logging.getLogger(__name__)
 

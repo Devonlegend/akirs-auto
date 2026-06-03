@@ -15,7 +15,7 @@ from celery import shared_task
 logger = logging.getLogger(__name__)
 
 
-@shared_task(name="akirs.tasks.phase2_recon.recon_advertiser_job", bind=True)
+@shared_task(name="tasks.phase2_recon.recon_advertiser_job", bind=True)
 def recon_advertiser_job(self, advertiser_id: int) -> dict[str, Any]:
     """Run all enabled recon sources for one advertiser."""
     return asyncio.run(_run_recon(advertiser_id))
@@ -25,8 +25,8 @@ async def _run_recon(advertiser_id: int) -> dict[str, Any]:
     # Imported lazily so the celery app can boot without the recon framework
     # being wired up (it's filled in by task #6).
     from backend.database import AsyncSessionLocal
-    from akirs.db.repositories import AdvertiserRepository, ReconRepository
-    from akirs.recon.registry import build_default_coordinator
+    from db.repositories import AdvertiserRepository, ReconRepository
+    from recon.registry import build_default_coordinator
 
     async with AsyncSessionLocal() as session:
         advertiser = await AdvertiserRepository(session).get(advertiser_id)
@@ -43,7 +43,7 @@ async def _run_recon(advertiser_id: int) -> dict[str, Any]:
     return {"advertiser_id": advertiser_id, "findings": persisted}
 
 
-@shared_task(name="akirs.tasks.phase2_recon.finalize_recon")
+@shared_task(name="tasks.phase2_recon.finalize_recon")
 def finalize_recon(results: list[dict[str, Any]], job_id: int) -> dict[str, Any]:
     """Chord callback after all per-advertiser recon tasks finish."""
     total_findings = sum(int(r.get("findings", 0) or 0) for r in results if isinstance(r, dict))

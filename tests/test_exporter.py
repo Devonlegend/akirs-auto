@@ -1,7 +1,7 @@
 import pytest
 
-from akirs.exporters import CSVExportService
-from akirs.db.repositories import AdvertiserRepository, SocialLinkRepository
+from exporters import CSVExportService
+from db.repositories import AdvertiserRepository, SocialLinkRepository
 
 
 @pytest.mark.asyncio

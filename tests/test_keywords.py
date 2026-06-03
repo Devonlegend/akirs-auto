@@ -1,5 +1,5 @@
-from akirs.keywords import expand
-from akirs.keywords.generator import KeywordRunSpec
+from keywords import expand
+from keywords.generator import KeywordRunSpec
 
 
 def test_cap_enforced_below_cartesian():

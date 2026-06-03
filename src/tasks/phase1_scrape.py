@@ -13,9 +13,9 @@ from typing import Any
 
 from celery import chord, shared_task
 
-from akirs.config.settings import get_settings
+from config.settings import get_settings
 from backend.database import AsyncSessionLocal
-from akirs.db.repositories import (
+from db.repositories import (
     AdRepository,
     AdvertiserRepository,
     GeographyRepository,
@@ -23,14 +23,14 @@ from akirs.db.repositories import (
     KeywordRunRepository,
     SocialLinkRepository,
 )
-from akirs.keywords import expand
-from akirs.scrapers.browser import launch_browser
-from akirs.scrapers.facebook_ads import FacebookAdsScraper
+from keywords import expand
+from scrapers.browser import launch_browser
+from scrapers.facebook_ads import FacebookAdsScraper
 
 logger = logging.getLogger(__name__)
 
 
-@shared_task(name="akirs.tasks.phase1_scrape.scrape_facebook_ads_job", bind=True)
+@shared_task(name="tasks.phase1_scrape.scrape_facebook_ads_job", bind=True)
 def scrape_facebook_ads_job(self, job_id: int, params: dict[str, Any]) -> dict[str, Any]:
     """Celery entry point. Runs the async impl via asyncio.run()."""
     return asyncio.run(_run(job_id, params, celery_task_id=self.request.id))
@@ -136,7 +136,7 @@ async def _run(job_id: int, params: dict[str, Any], celery_task_id: str | None) 
 
 def _dispatch_recon(job_id: int, advertiser_ids: list[int]) -> None:
     """Fan out a Phase 2 recon task per advertiser, chord to a finalize callback."""
-    from akirs.tasks.phase2_recon import finalize_recon, recon_advertiser_job
+    from tasks.phase2_recon import finalize_recon, recon_advertiser_job
 
     header = [recon_advertiser_job.s(adv_id) for adv_id in advertiser_ids]
     chord(header)(finalize_recon.s(job_id))

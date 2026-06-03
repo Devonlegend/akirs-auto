@@ -1,3 +1,3 @@
-from akirs.exporters.csv_export import CSVExportService
+from exporters.csv_export import CSVExportService
 
 __all__ = ["CSVExportService"]

@@ -6,7 +6,7 @@ inside each task so we don't have to monkey-patch with gevent/eventlet.
 
 from celery import Celery
 
-from akirs.config.settings import get_settings
+from config.settings import get_settings
 
 settings = get_settings()
 
@@ -15,8 +15,8 @@ celery_app = Celery(
     broker=settings.broker_url,
     backend=settings.result_backend,
     include=[
-        "akirs.tasks.phase1_scrape",
-        "akirs.tasks.phase2_recon",
+        "tasks.phase1_scrape",
+        "tasks.phase2_recon",
     ],
 )
 

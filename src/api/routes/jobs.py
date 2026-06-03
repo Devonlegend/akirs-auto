@@ -4,11 +4,11 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from akirs.api.deps import db_session
-from akirs.api.schemas import JobCreatedResponse, JobStatusResponse, ScrapeJobRequest
-from akirs.db.models import Ad, Advertiser, KeywordRun, ScrapeJob
-from akirs.db.repositories import JobRepository
-from akirs.tasks.phase1_scrape import scrape_facebook_ads_job
+from api.deps import db_session
+from api.schemas import JobCreatedResponse, JobStatusResponse, ScrapeJobRequest
+from db.models import Ad, Advertiser, KeywordRun, ScrapeJob
+from db.repositories import JobRepository
+from tasks.phase1_scrape import scrape_facebook_ads_job
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 

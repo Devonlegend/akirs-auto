@@ -14,7 +14,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from akirs.db.base import Base
+from db.base import Base
 
 
 class Geography(Base):

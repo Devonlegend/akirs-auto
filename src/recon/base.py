@@ -14,7 +14,7 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from akirs.db.models import Advertiser
+from db.models import Advertiser
 
 logger = logging.getLogger(__name__)
 
