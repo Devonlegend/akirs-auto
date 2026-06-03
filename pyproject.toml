@@ -37,3 +37,6 @@ packages = ["src/akirs"]
 asyncio_mode = "auto"
 testpaths = ["tests"]
 pythonpath = ["src"]
+
+[tool.fastapi]
+entrypoint = "backend.main:app"

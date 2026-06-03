@@ -24,12 +24,11 @@ def recon_advertiser_job(self, advertiser_id: int) -> dict[str, Any]:
 async def _run_recon(advertiser_id: int) -> dict[str, Any]:
     # Imported lazily so the celery app can boot without the recon framework
     # being wired up (it's filled in by task #6).
-    from akirs.db.base import get_session_factory
+    from backend.database import AsyncSessionLocal
     from akirs.db.repositories import AdvertiserRepository, ReconRepository
     from akirs.recon.registry import build_default_coordinator
 
-    factory = get_session_factory()
-    async with factory() as session:
+    async with AsyncSessionLocal() as session:
         advertiser = await AdvertiserRepository(session).get(advertiser_id)
         if advertiser is None:
             return {"advertiser_id": advertiser_id, "error": "not found"}

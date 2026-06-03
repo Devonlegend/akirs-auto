@@ -14,7 +14,7 @@ from typing import Any
 from celery import chord, shared_task
 
 from akirs.config.settings import get_settings
-from akirs.db.base import get_session_factory
+from backend.database import AsyncSessionLocal
 from akirs.db.repositories import (
     AdRepository,
     AdvertiserRepository,
@@ -38,7 +38,7 @@ def scrape_facebook_ads_job(self, job_id: int, params: dict[str, Any]) -> dict[s
 
 async def _run(job_id: int, params: dict[str, Any], celery_task_id: str | None) -> dict[str, Any]:
     settings = get_settings()
-    factory = get_session_factory()
+    settings = get_settings()
 
     target = int(params.get("target_ads_per_keyword", settings.target_ads_per_keyword_default))
     cap = int(params.get("keyword_cap", settings.keyword_cap_default))
@@ -53,7 +53,7 @@ async def _run(job_id: int, params: dict[str, Any], celery_task_id: str | None) 
         cap=cap,
     )
 
-    async with factory() as session:
+    async with AsyncSessionLocal() as session:
         await JobRepository(session).mark_started(job_id, celery_task_id)
         await session.commit()
 
@@ -68,7 +68,7 @@ async def _run(job_id: int, params: dict[str, Any], celery_task_id: str | None) 
 
             for spec in specs:
                 logger.info(f"Phase 1: scraping keyword='{spec.keyword}' location='{spec.location}'")
-                async with factory() as session:
+                async with AsyncSessionLocal() as session:
                     geo_repo = GeographyRepository(session)
                     kr_repo = KeywordRunRepository(session)
                     geo = await geo_repo.get_by_name(spec.location) if spec.location else None
@@ -88,7 +88,7 @@ async def _run(job_id: int, params: dict[str, Any], celery_task_id: str | None) 
                     logger.exception(f"Scrape failed for keyword '{spec.keyword}': {e}")
                     ads = []
 
-                async with factory() as session:
+                async with AsyncSessionLocal() as session:
                     adv_repo = AdvertiserRepository(session)
                     ad_repo = AdRepository(session)
                     link_repo = SocialLinkRepository(session)
@@ -118,7 +118,7 @@ async def _run(job_id: int, params: dict[str, Any], celery_task_id: str | None) 
         logger.exception(f"Phase 1 failed: {e}")
         error_msg = str(e)
 
-    async with factory() as session:
+    async with AsyncSessionLocal() as session:
         await JobRepository(session).mark_completed(job_id, error=error_msg)
         await session.commit()
 
