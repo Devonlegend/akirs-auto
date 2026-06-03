@@ -1,0 +1,50 @@
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: akirs-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  api:
+    profiles: ["full"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: akirs-api
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: sqlite+aiosqlite:////data/akirs.db
+      DATABASE_URL_SYNC: sqlite:////data/akirs.db
+      REDIS_URL: redis://redis:6379/0
+      FB_ADS_HEADLESS: "true"
+    volumes:
+      - ./data:/data
+    ports:
+      - "8000:8000"
+    command: uvicorn akirs.api.app:app --host 0.0.0.0 --port 8000
+
+  worker:
+    profiles: ["full"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: akirs-worker
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: sqlite+aiosqlite:////data/akirs.db
+      DATABASE_URL_SYNC: sqlite:////data/akirs.db
+      REDIS_URL: redis://redis:6379/0
+      FB_ADS_HEADLESS: "true"
+    volumes:
+      - ./data:/data
+    command: celery -A akirs.tasks.celery_app worker --loglevel=info --concurrency=2
