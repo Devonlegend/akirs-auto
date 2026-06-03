@@ -16,9 +16,9 @@ import asyncio
 import logging
 from datetime import datetime, UTC
 
-from akirs.config.settings import get_settings
-from akirs.db.base import get_session_factory
-from akirs.db.repositories import (
+from src.akirs.config.settings import get_settings
+from src.akirs.db.base import get_session_factory
+from src.akirs.db.repositories import (
     AdRepository,
     AdvertiserRepository,
     GeographyRepository,
@@ -27,9 +27,9 @@ from akirs.db.repositories import (
     ReconRepository,
     SocialLinkRepository,
 )
-from akirs.keywords import expand
-from akirs.scrapers.browser import launch_browser
-from akirs.scrapers.facebook_ads import FacebookAdsScraper
+from src.akirs.keywords import expand
+from src.akirs.scrapers.browser import launch_browser
+from src.akirs.scrapers.facebook_ads import FacebookAdsScraper
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s — %(message)s")
 logger = logging.getLogger("akirs.cli")
@@ -52,7 +52,7 @@ async def _run_recon(
         logger.info("No new advertisers — skipping recon")
         return
 
-    from akirs.recon.registry import build_default_coordinator  # noqa: PLC0415
+    from src.akirs.recon.registry import build_default_coordinator  # noqa: PLC0415
 
     coordinator = build_default_coordinator()
     logger.info("Starting Phase 2 recon for %d advertisers", len(new_advertiser_ids))
