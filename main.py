@@ -27,9 +27,9 @@ from akirs.db.repositories import (
     ReconRepository,
     SocialLinkRepository,
 )
-from src.akirs.keywords import expand
-from src.akirs.scrapers.browser import launch_browser
-from src.akirs.scrapers.facebook_ads import FacebookAdsScraper
+from akirs.keywords import expand
+from akirs.scrapers.browser import launch_browser
+from akirs.scrapers.facebook_ads import FacebookAdsScraper
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s — %(message)s")
 logger = logging.getLogger("akirs.cli")
