@@ -28,4 +28,5 @@ Thumbs.db
 # Playwright
 .auth/
 *.pyc
-
+.claude/
+agent*.md

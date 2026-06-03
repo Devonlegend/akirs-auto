@@ -57,7 +57,21 @@ async def test_disabled_source_returns_empty(session):
     assert out == []
 
 
-def test_default_coordinator_registers_all_five_sources():
+def test_default_coordinator_registers_expected_sources():
     coord = build_default_coordinator()
-    names = [s.name for s in coord.sources]
-    assert set(names) == {"search", "social", "enrichment", "registry", "warehouse"}
+    names = {src.name for tier in coord.tiers for src in tier}
+    assert names == {
+        "website",       # tier 1
+        "search", "social", "nominatim",  # tier 2 (free)
+        "places", "registry", "warehouse", "enrichment",  # tier 3 (paid/stubbed)
+    }
+
+
+def test_default_coordinator_orders_free_before_paid():
+    coord = build_default_coordinator()
+    # Tier 2 must contain only free sources — none require API keys.
+    tier_2_names = {s.name for s in coord.tiers[1]}
+    assert tier_2_names == {"search", "social", "nominatim"}
+    # Tier 3 holds the paid / key-gated providers.
+    tier_3_names = {s.name for s in coord.tiers[2]}
+    assert "places" in tier_3_names and "enrichment" in tier_3_names

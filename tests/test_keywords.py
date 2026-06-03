@@ -9,36 +9,45 @@ def test_cap_enforced_below_cartesian():
 
 
 def test_explicit_locations_and_categories():
+    # Layer 1 (curated cartesian) emits |locations| × |categories| = 4 entries.
+    # Layer 2 (Akwa Ibom matrix) ALWAYS runs and adds geo-tagged variants.
+    # We assert presence of the curated entries rather than exact length.
     result = expand(locations=["Uyo", "Eket"], categories=["food", "health"])
-    assert len(result) == 4
-    keywords = {spec.keyword for spec in result}
-    assert keywords == {"food Uyo", "health Uyo", "food Eket", "health Eket"}
+    keywords_with_loc = {(spec.keyword, spec.location) for spec in result}
+    assert ("food Uyo", "Uyo") in keywords_with_loc
+    assert ("health Uyo", "Uyo") in keywords_with_loc
+    assert ("food Eket", "Eket") in keywords_with_loc
+    assert ("health Eket", "Eket") in keywords_with_loc
 
 
 def test_user_keywords_appended():
+    # When the cap allows, user keywords reach the output.  Raise the cap
+    # high enough that Layer-2 (Akwa Ibom matrix) doesn't crowd them out.
     result = expand(
         locations=["Uyo"],
         categories=["food"],
-        user_keywords=["Akwa Ibom market"],
+        user_keywords=["Akwa Ibom market never duplicated"],
+        cap=10_000,
     )
     assert KeywordRunSpec("food Uyo", "Uyo") in result
-    assert KeywordRunSpec("Akwa Ibom market", None) in result
+    assert KeywordRunSpec("Akwa Ibom market never duplicated", None) in result
 
 
 def test_llm_expansion_only_runs_when_flag_set():
-    no_llm = expand(locations=["Uyo"], categories=["food"], use_llm=False)
-    with_llm = expand(locations=["Uyo"], categories=["food"], use_llm=True, cap=20)
+    no_llm = expand(locations=["Uyo"], categories=["food"], use_llm=False, cap=10_000)
+    with_llm = expand(locations=["Uyo"], categories=["food"], use_llm=True, cap=10_000)
     assert len(with_llm) > len(no_llm)
 
 
 def test_duplicate_user_keyword_dedupes():
-    # Identical (keyword, location) pair should dedupe: a user keyword that
-    # matches an already-emitted curated entry exactly is dropped.
+    # Two identical user keywords should collapse to one — high cap so the
+    # entries actually reach the user-keyword layer instead of being clipped.
+    unique_marker = "non-overlapping-test-keyword-xyz"
     result = expand(
         locations=["Uyo"],
         categories=["food"],
-        user_keywords=["food Uyo", "food Uyo"],  # double-duplicate
+        user_keywords=[unique_marker, unique_marker],
+        cap=10_000,
     )
-    # User keywords have location=None, so they're distinct from curated location-tagged entries.
-    # But two identical user keywords should collapse to one.
-    assert sum(1 for r in result if r.keyword == "food Uyo" and r.location is None) == 1
+    matches = [r for r in result if r.keyword == unique_marker and r.location is None]
+    assert len(matches) == 1
