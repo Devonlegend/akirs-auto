@@ -39,12 +39,14 @@ class Settings(BaseSettings):
     hunter_api_key: str | None = None
     apollo_api_key: str | None = None
     opencorporates_api_key: str | None = None
+    tomtom_api_key: str | None = None
 
     recon_search_concurrency: int = Field(default=2)
     recon_social_concurrency: int = Field(default=1)
     recon_enrichment_concurrency: int = Field(default=2)
     recon_registry_concurrency: int = Field(default=1)
     recon_warehouse_concurrency: int = Field(default=1)
+    recon_places_concurrency: int = Field(default=2)
     recon_search_delay_seconds: float = Field(default=2.0)
 
     # Enrichment browser pool

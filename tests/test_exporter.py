@@ -21,7 +21,10 @@ async def test_csv_export_includes_advertiser_with_no_links(session):
     header, *rows = lines
     assert header.split(",") == [
         "ad_id", "advertiser_name", "advertiser_url",
-        "social_platform", "social_url", "scraped_at",
+        "social_platform", "social_url",
+        "recon_legal_name", "recon_emails", "recon_phones",
+        "recon_addresses", "recon_sources",
+        "scraped_at",
     ]
     assert len(rows) == 3  # 2 link rows for adv1 + 1 empty row for adv2
     assert any("NoLinks" in r and ",," in r for r in rows)

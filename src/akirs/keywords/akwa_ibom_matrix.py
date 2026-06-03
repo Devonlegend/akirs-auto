@@ -7,14 +7,20 @@ signal through landmarks, dialect markers, or explicit "{service} in {city}"
 patterns.
 
 Buckets:
-    hyper_local:       Named landmarks, estates, roads, and neighborhoods
-    state_identity:    Cultural, ethnic, and dialect markers
-    commercial_intent: Cartesian product of location tokens × business suffixes
+    hyper_local:       Named landmarks, estates, roads, neighborhoods, institutions
+    state_identity:    Cultural, ethnic, dialect, cuisine, and slogan markers
+    commercial_intent: Cartesian product of location tokens × business suffixes,
+                       emitted across four templates:
+                           "{suffix} in {loc}"
+                           "{loc} {suffix}"
+                           "best {suffix} in {loc}"
+                           "{suffix} near {loc}"
 """
 
 from __future__ import annotations
 
 import logging
+from itertools import product
 from typing import Final
 
 logger = logging.getLogger(__name__)
@@ -22,132 +28,202 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Location tokens used in the commercial_intent cartesian
 # ---------------------------------------------------------------------------
+# Capital + state name + abbreviation + secondary cities. Secondary cities are
+# included because advertisers frequently target Eket/Ikot Ekpene/Oron as
+# proxies for state-wide reach.
 _LOCATION_TOKENS: Final[tuple[str, ...]] = (
     "Uyo",
     "AKS",
     "Akwa Ibom",
+    "Akwa Ibom State",
     "Eket",
     "Ikot Ekpene",
+    "Oron",
+    "Abak",
+    "Itu",
 )
 
 # ---------------------------------------------------------------------------
 # Commercial suffixes — services and businesses common in AKS
 # ---------------------------------------------------------------------------
 _COMMERCIAL_SUFFIXES: Final[tuple[str, ...]] = (
-    "delivery",
-    "boutique",
-    "real estate",
-    "makeup artist",
-    "logistics",
-    "catering",
-    "hotel",
-    "restaurant",
-    "gym",
-    "salon",
-    "barber",
-    "laundry",
-    "cleaning",
-    "photography",
-    "printing",
-    "cake",
-    "fashion designer",
-    "tailor",
-    "event planner",
-    "DJ",
-    "MC",
-    "baker",
-    "florist",
-    "mechanic",
-    "electrician",
-    "plumber",
-    "painter",
-    "interior design",
-    "architecture",
-    "surveyor",
-    "lawyer",
-    "doctor",
-    "dentist",
-    "pharmacy",
-    "school",
-    "driving school",
-    "tech hub",
-    "coworking",
-    "POS agent",
-    "Bet9ja",
-    "betting",
-    "forex trader",
-    "crypto",
-    "phone repair",
-    "laptop repair",
+    # Retail / fashion
+    "boutique", "thrift", "ankara", "fashion designer", "tailor",
+    "shoe vendor", "wig vendor", "perfume",
+    # Beauty
+    "makeup artist", "salon", "barber", "lash tech", "nail tech",
+    "spa", "skincare",
+    # Food & hospitality
+    "restaurant", "catering", "small chops", "cake", "shawarma",
+    "bakery", "hotel", "lounge",
+    # Logistics / mobility
+    "delivery", "logistics", "dispatch rider", "haulage", "car hire",
+    "uber driver", "bolt driver",
+    # Real estate / construction
+    "real estate", "shortlet", "apartment", "land for sale",
+    "architecture", "interior design", "POP",
+    # Tech / professional services
+    "tech hub", "coworking", "phone repair", "laptop repair",
+    "web designer", "graphics designer", "social media manager",
+    "school", "tutorial center", "driving school",
+    # Health / wellness
+    "pharmacy", "gym", "fitness coach", "physiotherapy",
+    # Finance / hustle economy
+    "POS agent", "Bet9ja", "betting", "forex trader", "crypto",
+    "loan", "fintech agent",
+    # Events / entertainment
+    "event planner", "DJ", "MC", "photographer", "videographer",
+    "rental",
+    # Professional / civic
+    "lawyer", "doctor", "dentist", "mechanic", "electrician",
+    "plumber", "painter", "surveyor", "printing", "florist",
+    "laundry", "cleaning",
 )
+
+# ---------------------------------------------------------------------------
+# Commercial-intent templates
+# ---------------------------------------------------------------------------
+# Each template is f-string-ish; only the placeholders {loc} and {suffix} are
+# substituted. Kept as a tuple so adding a new template is a one-line change.
+_COMMERCIAL_TEMPLATES: Final[tuple[str, ...]] = (
+    "{suffix} in {loc}",
+    "{loc} {suffix}",
+    "best {suffix} in {loc}",
+    "{suffix} near {loc}",
+)
+
+
+def _build_commercial_intent() -> list[str]:
+    """Cartesian (location × suffix × template), dedup-preserving order."""
+    seen: set[str] = set()
+    out: list[str] = []
+    for loc, suffix, tpl in product(
+        _LOCATION_TOKENS, _COMMERCIAL_SUFFIXES, _COMMERCIAL_TEMPLATES
+    ):
+        kw = tpl.format(loc=loc, suffix=suffix)
+        key = kw.lower()
+        if key not in seen:
+            seen.add(key)
+            out.append(kw)
+    return out
+
 
 # ---------------------------------------------------------------------------
 # Keyword Buckets
 # ---------------------------------------------------------------------------
 AKWA_IBOM_KEYWORD_BUCKETS: Final[dict[str, list[str]]] = {
-    # Bucket 1: Landmarks & Neighborhoods
+    # Bucket 1: Landmarks, roads, estates, markets, institutions, venues
     "hyper_local": [
+        # Major arteries
         "Aka Road",
         "Abak Road",
         "Ikot Ekpene Road",
+        "Oron Road",
+        "Nwaniba Road",
+        "Udo Udoma Avenue",
+        "Wellington Bassey Way",
+        "Nsikak Eduok Avenue",
+        "Babangida Avenue",
+        "IBB Way",
+        "Brook Street",
+        "Calabar-Itu Road",
+        "Four Lanes",
+        # Estates & neighborhoods
         "Osongama Estate",
         "Shelter Afrique",
+        "Ewet Housing",
+        "Ewet Estate",
+        "Federal Housing",
+        "Aka Itiam",
+        "Ikot Oku Ikono",
+        "Use Offot",
+        "Mbierebe",
+        "Ekom Iman",
+        "Atiku Abubakar Avenue",
+        # Markets
+        "Itam Market",
+        "Akpan Andem Market",
+        "Urua Akpan Andem",
+        "Plaza Market",
+        "Etuk Street market",
+        # Institutions & education
         "UniUyo",
-        "Ibom Tropicana",
+        "University of Uyo",
+        "AKSU",
+        "Akwa Ibom State University",
+        "Heritage Polytechnic",
+        "Maritime Academy Oron",
+        "Ritman University",
+        # Landmarks & venues
         "Ibom Plaza",
         "Ibom Hall",
         "Ibom Connection",
-        "Ewet Housing",
-        "Four Lanes",
-        "Nwaniba Road",
-        "IBB Way",
-        "Oron Road",
-        "Udo Udoma Avenue",
-        "Babangida Avenue",
-        "Wellington Bassey Way",
-        "Aka Itiam",
-        "Itam Market",
-        "Brook Street",
-        "Nsikak Eduok Avenue",
+        "Ibom Tropicana",
+        "Tropicana Entertainment Centre",
         "Godswill Akpabio Stadium",
+        "Ibom International Stadium",
         "Ibom E-Library",
         "Le Meridien Ibom Hotel",
+        "Ibom Icon Hotel",
         "Ibom Specialist Hospital",
         "Ibom Air",
-        "Ikot Oku Ikono",
-        "Mbierebe",
-        "Ekom Iman",
-        "Use Offot",
+        "Ibom Airport",
+        "Victor Attah International Airport",
+        "Unity Park",
+        # Religious / civic
+        "Qua Iboe Church Headquarters",
+        "Government House Uyo",
+        "House of Assembly Uyo",
     ],
-    # Bucket 2: Cultural & Dialect Markers
+    # Bucket 2: Cultural & dialect markers, cuisine, slogans, festivals
     "state_identity": [
+        # Identity / political slogans
         "Akwa Ibom",
+        "Akwa Ibom State",
         "Dakkada",
         "Ibom",
-        "Edikang Ikong",
-        "Afang",
+        "Promise Land",
+        "Land of Promise",
+        "Akwa Cross",
         "Uyo pride",
+        "ARISE Agenda",
+        # Ethnic groups
         "Ibibio",
         "Annang",
         "Oron people",
+        "Eket people",
+        "Obolo",
+        "Efik-Ibibio",
+        # Dialect / cultural markers
+        "Mbok",
+        "Sosongo",
+        "Abadie",
+        "Nno",
+        "Ekomette",
+        # Cuisine (high-affinity for food businesses)
+        "Edikang Ikong",
+        "Afang",
+        "Atama soup",
+        "Ekpang Nkukwo",
+        "Editan",
+        "Iwuk Edesi",
+        "Nsala soup",
+        "Fisherman soup",
+        "Afia Efere",
+        # Festivals & arts
         "Ekpe masquerade",
-        "Ibom culture",
-        "promise land",
-        "Akwa Cross",
+        "Ekong dance",
+        "Abang dance",
+        "Ekombi",
+        "Uyo Carnival",
+        "Ibom Cultural Festival",
+        # Regional descriptors
         "Niger Delta",
         "South South Nigeria",
+        "South-South",
     ],
-    # Bucket 3: Business + Location Combos (populated at import time)
-    "commercial_intent": [
-        f"{suffix} in {loc}"
-        for loc in _LOCATION_TOKENS
-        for suffix in _COMMERCIAL_SUFFIXES
-    ]
-    + [
-        f"{loc} {suffix}"
-        for loc in _LOCATION_TOKENS
-        for suffix in _COMMERCIAL_SUFFIXES
-    ],
+    # Bucket 3: Business + Location combos (populated at import time)
+    "commercial_intent": _build_commercial_intent(),
 }
 
 
@@ -156,10 +232,8 @@ def generate_akwa_ibom_keywords() -> list[str]:
 
     Combines hyper-local landmarks, state identity markers, and commercial
     intent combos into a single flat list. Commercial intent entries are
-    generated in two patterns per (location, suffix) pair:
-
-    * ``"{suffix} in {location}"``  — matches "delivery in Uyo"
-    * ``"{location} {suffix}"``     — matches "Uyo delivery"
+    generated across four templates per (location, suffix) pair — see
+    ``_COMMERCIAL_TEMPLATES``.
 
     Returns:
         Sorted list of unique keyword strings.
@@ -167,26 +241,12 @@ def generate_akwa_ibom_keywords() -> list[str]:
     seen: set[str] = set()
     result: list[str] = []
 
-    # Emit hyper_local as-is
-    for kw in AKWA_IBOM_KEYWORD_BUCKETS["hyper_local"]:
-        lower = kw.lower()
-        if lower not in seen:
-            seen.add(lower)
-            result.append(kw)
-
-    # Emit state_identity as-is
-    for kw in AKWA_IBOM_KEYWORD_BUCKETS["state_identity"]:
-        lower = kw.lower()
-        if lower not in seen:
-            seen.add(lower)
-            result.append(kw)
-
-    # Emit commercial_intent combos
-    for kw in AKWA_IBOM_KEYWORD_BUCKETS["commercial_intent"]:
-        lower = kw.lower()
-        if lower not in seen:
-            seen.add(lower)
-            result.append(kw)
+    for bucket in ("hyper_local", "state_identity", "commercial_intent"):
+        for kw in AKWA_IBOM_KEYWORD_BUCKETS[bucket]:
+            lower = kw.lower()
+            if lower not in seen:
+                seen.add(lower)
+                result.append(kw)
 
     result.sort(key=str.lower)
     logger.debug("Generated %d Akwa Ibom keywords", len(result))

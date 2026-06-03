@@ -26,8 +26,10 @@ CSV_FIELDS = (
     "advertiser_url",
     "social_platform",
     "social_url",
+    "recon_legal_name",
     "recon_emails",
     "recon_phones",
+    "recon_addresses",
     "recon_sources",
     "scraped_at",
 )
@@ -41,16 +43,19 @@ class CSVExportService:
 
     @staticmethod
     def _aggregate_recon(findings: list[ReconFinding]) -> dict[str, str]:
-        """Aggregate recon findings into semicolon-separated email, phone, and source strings.
+        """Aggregate recon findings into semicolon-separated strings by kind.
 
         Args:
             findings: List of ReconFinding ORM objects for a single advertiser.
 
         Returns:
-            Dict with keys ``recon_emails``, ``recon_phones``, ``recon_sources``.
+            Dict with keys ``recon_legal_name``, ``recon_emails``,
+            ``recon_phones``, ``recon_addresses``, ``recon_sources``.
         """
         emails: list[str] = []
         phones: list[str] = []
+        addresses: list[str] = []
+        company_names: list[tuple[float, str]] = []
         sources: set[str] = set()
 
         for finding in findings:
@@ -58,11 +63,24 @@ class CSVExportService:
                 emails.append(finding.value)
             elif finding.kind == "phone":
                 phones.append(finding.value)
+            elif finding.kind == "address":
+                addresses.append(finding.value)
+            elif finding.kind == "company_name":
+                company_names.append((finding.confidence or 0.0, finding.value))
             sources.add(finding.source)
 
+        # Pick the highest-confidence company_name finding as the canonical
+        # "legal name" — keeps the CSV column single-valued and meaningful.
+        legal_name = ""
+        if company_names:
+            company_names.sort(key=lambda x: x[0], reverse=True)
+            legal_name = company_names[0][1]
+
         return {
-            "recon_emails": "; ".join(dict.fromkeys(emails)),  # dedupe preserving order
+            "recon_legal_name": legal_name,
+            "recon_emails": "; ".join(dict.fromkeys(emails)),
             "recon_phones": "; ".join(dict.fromkeys(phones)),
+            "recon_addresses": "; ".join(dict.fromkeys(addresses)),
             "recon_sources": "; ".join(sorted(sources)),
         }
 
