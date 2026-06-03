@@ -1,8 +1,8 @@
 """Thin CLI shim: single-shot scrape via the new akirs framework.
 
 For the full server experience (FastAPI + Celery + recon), use:
-    uvicorn akirs.api.app:app --reload
-    celery -A akirs.tasks.celery_app worker --loglevel=info
+    uvicorn api.app:app --reload
+    celery -A tasks.celery_app worker --loglevel=info
 
 This shim runs phase 1 directly in-process without Celery, useful for quick
 local verification of pagination + DB persistence.  When ``--recon`` is
@@ -16,9 +16,9 @@ import asyncio
 import logging
 from datetime import datetime, UTC
 
-from akirs.config.settings import get_settings
-from akirs.db.base import get_session_factory
-from akirs.db.repositories import (
+from config.settings import get_settings
+from db.base import get_session_factory
+from db.repositories import (
     AdRepository,
     AdvertiserRepository,
     GeographyRepository,
@@ -27,9 +27,9 @@ from akirs.db.repositories import (
     ReconRepository,
     SocialLinkRepository,
 )
-from akirs.keywords import expand
-from akirs.scrapers.browser import launch_browser
-from akirs.scrapers.facebook_ads import FacebookAdsScraper
+from keywords import expand
+from scrapers.browser import launch_browser
+from scrapers.facebook_ads import FacebookAdsScraper
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s — %(message)s")
 logger = logging.getLogger("akirs.cli")
@@ -52,7 +52,7 @@ async def _run_recon(
         logger.info("No new advertisers — skipping recon")
         return
 
-    from akirs.recon.registry import build_default_coordinator  # noqa: PLC0415
+    from recon.registry import build_default_coordinator  # noqa: PLC0415
 
     coordinator = build_default_coordinator()
     logger.info("Starting Phase 2 recon for %d advertisers", len(new_advertiser_ids))
@@ -91,7 +91,7 @@ async def _export_csv(factory) -> None:
     Args:
         factory: Async session factory.
     """
-    from akirs.exporters.csv_export import CSVExportService  # noqa: PLC0415
+    from exporters.csv_export import CSVExportService  # noqa: PLC0415
 
     settings = get_settings()
     timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
