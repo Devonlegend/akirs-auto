@@ -25,6 +25,12 @@ dev = [
     "pytest>=8.3.0",
     "pytest-asyncio>=0.24.0",
 ]
+chatbot = [
+    "chromadb>=0.5.0",
+    "sentence-transformers>=3.0.0",
+    "tiktoken>=0.7.0",
+    "rapidfuzz>=3.0.0",
+]
 
 [build-system]
 requires = ["hatchling"]

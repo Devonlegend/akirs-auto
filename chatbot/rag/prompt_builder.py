@@ -1,0 +1,35 @@
+"""Prompt builder — formats system + context + question for Phi-4-mini."""
+
+from __future__ import annotations
+
+DEFAULT_SYSTEM_PROMPT = """\
+You are a helpful, accurate assistant. Answer the user's question using ONLY \
+the provided context below. Follow these rules strictly:
+
+1. If the answer IS found in the context, provide a clear, concise answer \
+and cite which source(s) you used (by doc_id or chunk index).
+2. If the answer is NOT found in the context, say: "I don't have enough \
+information in the provided context to answer that."
+3. Do NOT use any outside knowledge — rely exclusively on the context.
+4. If the context contains conflicting information, point that out.
+5. Keep answers concise but complete."""
+
+
+def build_prompt(
+    question: str,
+    context: str,
+    *,
+    system_prompt: str | None = None,
+) -> tuple[str, str]:
+    """Build the system + user prompts for the RAG pipeline.
+
+    Args:
+        question: The user's question.
+        context: The formatted context string (from :func:`retrieval.retriever.format_context`).
+        system_prompt: Optional override for the system prompt.
+
+    Returns:
+        A tuple of ``(system_prompt, user_prompt)``.
+    """
+    system = system_prompt if system_prompt is not None else DEFAULT_SYSTEM_PROMPT
+    return system, context
