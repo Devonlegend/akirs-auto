@@ -7,6 +7,7 @@ import re
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from typing import Optional
+from urllib.parse import parse_qs, urlparse
 
 from playwright.async_api import Locator, Page
 
@@ -27,14 +28,23 @@ class AdCard:
     async def open_dialog(self) -> None:
         await self.button.scroll_into_view_if_needed()
         await self.button.click()
-        await self.page.wait_for_timeout(600)
+        try:
+            await self.page.wait_for_selector("div[role='dialog']", timeout=5000)
+            await self.page.wait_for_timeout(500)
+        except Exception as e:
+            logger.warning(f"Dialog wait failed for ad {self.index}: {e}")
 
     async def close_dialog(self) -> None:
         try:
-            dialog = self.page.get_by_role("dialog", name="Ad details")
+            dialog = self.page.locator("div[role='dialog']").first
             if await dialog.is_visible():
                 await dialog.press("Escape")
-                await self.page.wait_for_timeout(200)
+                await self.page.wait_for_timeout(300)
+                if await dialog.is_visible():
+                    # Fallback click outside or close button
+                    close_btn = dialog.get_by_role("button").first
+                    if await close_btn.count() > 0:
+                        await close_btn.click()
         except Exception:
             pass
 
@@ -61,59 +71,108 @@ class FacebookAdsLibraryPage:
         self.settings = get_settings()
 
     async def navigate(self) -> None:
-        await self.page.goto(self.settings.fb_ads_base_url)
-        await self.page.wait_for_load_state("networkidle")
+        for attempt in range(4):
+            await self.page.goto(self.settings.fb_ads_base_url)
+            await self.page.wait_for_load_state("networkidle")
+            await self.page.wait_for_timeout(2000)
+            
+            error_msg = self.page.locator("text=/something went wrong/i").first
+            if await error_msg.count() > 0:
+                logger.warning(f"Encountered 'Something went wrong' on load. Hard navigating (attempt {attempt + 1}/4)...")
+                await self.page.wait_for_timeout(3000)
+                await self.page.goto(self.settings.fb_ads_base_url)
+                await self.page.wait_for_load_state("networkidle")
+            else:
+                break
 
     async def select_country(self, country_name: str) -> None:
         try:
             await self.page.wait_for_timeout(900)
-            country_combo = self.page.get_by_role("combobox").filter(has_text=re.compile(r"country", re.I)).first
-            if await country_combo.count() == 0:
-                country_combo = self.page.locator("div[role='button']:has-text('Country')").first
-            await country_combo.click()
-            await self.page.wait_for_timeout(400)
+            country_combo = self.page.locator("div[role='button'], div[role='combobox']").filter(has_text=re.compile(f"country|{country_name}", re.I)).first
+            
+            if await country_combo.count() > 0:
+                current_text = await country_combo.inner_text()
+                if country_name.lower() in current_text.lower():
+                    logger.info(f"Country is already set to {current_text.strip()}")
+                    return
+                await country_combo.click(timeout=5000)
+                await self.page.wait_for_timeout(400)
 
-            search_box = self.page.get_by_role("textbox", name=re.compile("country", re.I))
-            await search_box.click()
-            await search_box.fill(country_name)
-            await self.page.wait_for_timeout(400)
+                search_box = self.page.get_by_role("textbox", name=re.compile("country", re.I)).first
+                if await search_box.count() == 0:
+                    search_box = self.page.locator("input[placeholder*='earch']").first
+                await search_box.click()
+                await search_box.press("Control+A")
+                await search_box.press("Backspace")
+                await search_box.press_sequentially(country_name, delay=100)
+                await self.page.wait_for_timeout(400)
 
-            await self.page.get_by_role("radio", name=country_name).check()
-            await self.page.wait_for_timeout(300)
+                await self.page.get_by_role("radio", name=country_name).check()
+                await self.page.wait_for_timeout(300)
 
-            done_btn = self.page.get_by_role("button", name=re.compile("done", re.I)).first
-            if await done_btn.count() > 0:
-                await done_btn.click()
+                done_btn = self.page.get_by_role("button", name=re.compile("done", re.I)).first
+                if await done_btn.count() > 0:
+                    await done_btn.click()
         except Exception as e:
             logger.warning(f"select_country({country_name}) failed (continuing): {e}")
 
     async def select_ad_category(self, category: str = "All ads") -> None:
         try:
-            dropdown = self.page.locator('div[role="combobox"]:has-text("Ad category")').first
+            dropdown = self.page.locator('div[role="combobox"], div[role="button"]').filter(has_text=re.compile("Ad category", re.I)).first
             if await dropdown.count() > 0:
                 await dropdown.click()
             else:
                 await self.page.get_by_text("Ad category").first.click()
             await self.page.wait_for_timeout(400)
+            
             option = self.page.get_by_role("option", name=category).first
             if await option.count() == 0:
-                option = self.page.locator(f'span:has-text("{category}")').first
+                option = self.page.locator(f'div[role="button"], span').filter(has_text=re.compile(category, re.I)).first
             await option.click()
             await self.page.wait_for_timeout(400)
         except Exception as e:
             logger.warning(f"select_ad_category({category}) failed (continuing): {e}")
 
     async def search_keyword(self, keyword: str) -> None:
-        try:
-            search_box = self.page.get_by_placeholder(re.compile("search by keyword", re.I))
-            await search_box.fill(keyword)
-            await search_box.press("Enter")
-            await self.page.wait_for_load_state("networkidle", timeout=15000)
-        except Exception as e:
-            logger.warning(f"search_keyword({keyword}) failed: {e}")
+        for attempt in range(3):
+            try:
+                search_box = self.page.get_by_placeholder(re.compile("search|keyword", re.I)).first
+                if await search_box.count() == 0:
+                     search_box = self.page.locator("input[type='text']").last
+                
+                await search_box.click()
+                await self.page.wait_for_timeout(300)
+                await search_box.press("Control+A")
+                await search_box.press("Backspace")
+                await self.page.wait_for_timeout(200)
+                
+                # Human typing simulation
+                await search_box.press_sequentially(keyword, delay=120)
+                await self.page.wait_for_timeout(500)
+                await search_box.press("Enter")
+                
+                await self.page.wait_for_load_state("networkidle", timeout=15000)
+                await self.page.wait_for_timeout(3000)
+                
+                # Check if it errored out after searching
+                error_msg = self.page.locator("text=/something went wrong/i").first
+                if await error_msg.count() > 0:
+                    logger.warning(f"Search errored for '{keyword}'. Hard resetting page (attempt {attempt+1}/3)...")
+                    await self.navigate()
+                    await self.select_country(self.settings.fb_ads_country)
+                    await self.select_ad_category("All ads")
+                    continue
+                else:
+                    break
+            except Exception as e:
+                logger.warning(f"search_keyword({keyword}) failed: {e}")
+                break
+
+    def _get_ad_buttons(self) -> Locator:
+        return self.page.locator("div[role='button'], a, button").filter(has_text=re.compile(r"ad details", re.I))
 
     async def visible_ad_count(self) -> int:
-        return await self.page.locator(self.AD_DETAILS_BUTTON_SELECTOR).count()
+        return await self._get_ad_buttons().count()
 
     async def _scroll_to_load_more(self) -> bool:
         """Scroll once. Return True if document height changed (i.e. content loaded)."""
@@ -135,9 +194,19 @@ class FacebookAdsLibraryPage:
         empty_scrolls = 0
         scroll_count = 0
         seen_fingerprints: set[str] = set()
+        
+        # Debug dump if no ads found on initial load
+        if await self.visible_ad_count() == 0:
+            logger.warning("0 ad details buttons found on initial load, dumping debug info...")
+            try:
+                await self.page.screenshot(path="output/debug_fb.png", full_page=True)
+                with open("output/debug_fb.html", "w") as f:
+                    f.write(await self.page.content())
+            except Exception as e:
+                logger.error(f"Failed to dump debug files: {e}")
 
         while yielded < target_count and scroll_count <= max_scrolls:
-            buttons = self.page.locator(self.AD_DETAILS_BUTTON_SELECTOR)
+            buttons = self._get_ad_buttons()
             count = await buttons.count()
             new_in_pass = 0
             for i in range(count):
@@ -181,8 +250,11 @@ async def _fingerprint_card(button: Locator, index: int) -> str:
 async def _get_advertiser_info(page: Page) -> dict:
     info: dict = {"name": None, "url": None, "fb_ad_id": None}
     try:
-        dialog = page.get_by_role("dialog", name="Ad details")
-        advertiser_link = dialog.locator("a[href*='facebook.com']").first
+        dialog = page.locator("div[role='dialog']").first
+        if await dialog.count() == 0:
+            return info
+
+        advertiser_link = dialog.locator("a[href*='facebook.com'], a[href*='instagram.com']").first
         if await advertiser_link.count() > 0:
             info["name"] = (await advertiser_link.inner_text()).strip() or None
             info["url"] = await advertiser_link.get_attribute("href")
@@ -191,32 +263,39 @@ async def _get_advertiser_info(page: Page) -> dict:
         m = re.search(r"Library ID[:\s]+(\d+)", dialog_text)
         if m:
             info["fb_ad_id"] = m.group(1)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"_get_advertiser_info error: {e}")
     return info
 
 
 async def _extract_social_links_from_dialog(page: Page) -> list[dict]:
     links: list[dict] = []
     try:
-        dialog = page.get_by_role("dialog", name="Ad details")
-        if not await dialog.is_visible():
+        dialog = page.locator("div[role='dialog']").first
+        if await dialog.count() == 0:
             return links
 
         anchors = await dialog.locator("a").all()
         for a in anchors:
             try:
                 href = await a.get_attribute("href")
-                text = (await a.inner_text()).strip()
-                if not href or href.startswith("javascript:"):
+                if not href or href.startswith("javascript:") or href.startswith("/"):
                     continue
+                
+                # Unwrap facebook redirect links
+                if "l.facebook.com/l.php" in href:
+                    qs = parse_qs(urlparse(href).query)
+                    if "u" in qs:
+                        href = qs["u"][0]
+
+                text = (await a.inner_text()).strip()
                 platform = _detect_platform(href, text)
                 if platform:
                     links.append({"platform": platform, "url": href, "text": text})
             except Exception:
                 continue
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"_extract_social_links error: {e}")
     return _dedupe_links(links)
 
 

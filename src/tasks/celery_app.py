@@ -26,7 +26,19 @@ celery_app.conf.update(
     result_serializer="json",
     timezone="UTC",
     enable_utc=True,
+    task_default_queue="akirs",
+    task_routes={
+        "akirs.tasks.phase1_scrape.*": {"queue": "scrape"},
+        "akirs.tasks.phase2_recon.*": {"queue": "recon"},
+    },
     task_track_started=True,
     task_acks_late=True,
+    task_reject_on_worker_lost=True,
     worker_prefetch_multiplier=1,
+    worker_cancel_long_running_tasks_on_connection_loss=True,
+    broker_connection_retry_on_startup=True,
+    result_expires=60 * 60 * 24,
 )
+
+# Conventional alias for Celery CLI/app discovery.
+app = celery_app

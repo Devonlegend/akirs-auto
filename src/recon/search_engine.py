@@ -1,4 +1,4 @@
-"""Search-engine recon adapter — DuckDuckGo HTML, no API key required.
+"""Search-engine recon adapter — DuckDuckGo HTML via Playwright.
 
 Queries DuckDuckGo with several templates (including contact-specific
 ones), parses result URLs and snippets, and produces ``mention``,
@@ -11,30 +11,26 @@ from __future__ import annotations
 import asyncio
 import logging
 from typing import Any
+from urllib.parse import quote_plus
 
-import httpx
 from bs4 import BeautifulSoup
+from playwright.async_api import Error as PlaywrightError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config.settings import get_settings
 from src.db.models import Advertiser
 from recon.base import ReconFindingData, ReconSource
 from recon.extractors import extract_emails, extract_phones
+from scrapers.browser import launch_browser
 
 logger = logging.getLogger(__name__)
 
 DDG_HTML_URL = "https://html.duckduckgo.com/html/"
-DEFAULT_HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
-        "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-    ),
-    "Accept-Language": "en-US,en;q=0.9",
-}
+_NAV_TIMEOUT = 15_000
 
 
 class SearchEngineRecon(ReconSource):
-    """Tier-2 recon: DuckDuckGo HTML search for advertiser mentions."""
+    """Tier-2 recon: DuckDuckGo HTML search for advertiser mentions via Playwright."""
 
     name = "search"
 
@@ -56,13 +52,11 @@ class SearchEngineRecon(ReconSource):
         findings: list[ReconFindingData] = []
         settings = get_settings()
 
-        async with httpx.AsyncClient(
-            timeout=15.0, headers=DEFAULT_HEADERS, follow_redirects=True
-        ) as client:
+        async with launch_browser(headless=True) as (_browser, _ctx, page):
             for template in self.QUERY_TEMPLATES:
                 query = template.format(name=advertiser.name)
                 try:
-                    results = await self._search(client, query)
+                    results = await self._search(page, query)
                 except Exception as exc:
                     logger.warning("[search] Query failed '%s': %s", query, exc)
                     results = []
@@ -130,12 +124,23 @@ class SearchEngineRecon(ReconSource):
     # ------------------------------------------------------------------
 
     async def _search(
-        self, client: httpx.AsyncClient, query: str
+        self, page, query: str
     ) -> list[dict[str, Any]]:
-        """POST to DuckDuckGo HTML and parse the results page."""
-        resp = await client.post(DDG_HTML_URL, data={"q": query})
-        resp.raise_for_status()
-        soup = BeautifulSoup(resp.text, "html.parser")
+        """Search DuckDuckGo HTML using Playwright and parse the results page."""
+        url = f"{DDG_HTML_URL}?q={quote_plus(query)}"
+        try:
+            await page.goto(url, timeout=_NAV_TIMEOUT, wait_until="domcontentloaded")
+            # Wait for either results or a no-results message
+            try:
+                await page.wait_for_selector(".result, .no-results", timeout=5_000)
+            except PlaywrightError:
+                pass  # It's okay if they don't appear, we will parse whatever HTML is there
+            html = await page.content()
+        except PlaywrightError as exc:
+            logger.warning("[search] Navigation failed for %s: %s", url, exc)
+            return []
+
+        soup = BeautifulSoup(html, "html.parser")
 
         results: list[dict[str, Any]] = []
         for result_div in soup.select("div.result"):
@@ -150,3 +155,4 @@ class SearchEngineRecon(ReconSource):
                 continue
             results.append({"url": href, "title": title, "snippet": snippet})
         return results
+
