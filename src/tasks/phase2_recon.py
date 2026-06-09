@@ -72,12 +72,16 @@ def _trigger_chatbot_reindex() -> None:
     from chatbot.connectors.scraper_connector import run_scraper_ingest
 
     try:
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            # We're in an async context — schedule via a new loop in a thread is tricky.
-            # Run synchronously with asyncio.run() in a new loop.
-            pass
+        loop = asyncio.get_running_loop()
     except RuntimeError:
-        pass
+        loop = None
 
-    asyncio.run(run_scraper_ingest(collection="akirs_businesses"))
+    if loop and loop.is_running():
+        import threading
+        thread = threading.Thread(
+            target=lambda: asyncio.run(run_scraper_ingest(collection="akirs_businesses"))
+        )
+        thread.start()
+        thread.join()
+    else:
+        asyncio.run(run_scraper_ingest(collection="akirs_businesses"))
