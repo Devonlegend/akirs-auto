@@ -55,7 +55,7 @@ class Embedder:
         if not texts:
             return []
 
-        model = self._get_or_load_model()
+        model = await asyncio.to_thread(self._get_or_load_model)
         # sentence-transformers encode is synchronous — run in thread.
         embeddings = await asyncio.to_thread(
             model.encode,
