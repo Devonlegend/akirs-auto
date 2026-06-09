@@ -7,6 +7,7 @@ import re
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from typing import Optional
+from urllib.parse import parse_qs, urlparse
 
 from playwright.async_api import Locator, Page
 
@@ -27,14 +28,23 @@ class AdCard:
     async def open_dialog(self) -> None:
         await self.button.scroll_into_view_if_needed()
         await self.button.click()
-        await self.page.wait_for_timeout(600)
+        try:
+            await self.page.wait_for_selector("div[role='dialog']", timeout=5000)
+            await self.page.wait_for_timeout(500)
+        except Exception as e:
+            logger.warning(f"Dialog wait failed for ad {self.index}: {e}")
 
     async def close_dialog(self) -> None:
         try:
-            dialog = self.page.get_by_role("dialog", name="Ad details")
+            dialog = self.page.locator("div[role='dialog']").first
             if await dialog.is_visible():
                 await dialog.press("Escape")
-                await self.page.wait_for_timeout(200)
+                await self.page.wait_for_timeout(300)
+                if await dialog.is_visible():
+                    # Fallback click outside or close button
+                    close_btn = dialog.get_by_role("button").first
+                    if await close_btn.count() > 0:
+                        await close_btn.click()
         except Exception:
             pass
 
@@ -67,23 +77,31 @@ class FacebookAdsLibraryPage:
     async def select_country(self, country_name: str) -> None:
         try:
             await self.page.wait_for_timeout(900)
-            country_combo = self.page.get_by_role("combobox").filter(has_text=re.compile(r"country", re.I)).first
-            if await country_combo.count() == 0:
-                country_combo = self.page.locator("div[role='button']:has-text('Country')").first
-            await country_combo.click()
-            await self.page.wait_for_timeout(400)
+            combos = self.page.get_by_role("combobox")
+            if await combos.count() > 0:
+                country_combo = combos.nth(0)
+            else:
+                country_combo = self.page.locator("div[role='button']").filter(has_text=re.compile(f"country|{country_name}|all", re.I)).first
+            
+            if await country_combo.count() > 0:
+                current_text = await country_combo.inner_text()
+                if country_name.lower() in current_text.lower():
+                    logger.info(f"Country is already set to {current_text.strip()}")
+                    return
+                await country_combo.click(timeout=5000)
+                await self.page.wait_for_timeout(400)
 
-            search_box = self.page.get_by_role("textbox", name=re.compile("country", re.I))
-            await search_box.click()
-            await search_box.fill(country_name)
-            await self.page.wait_for_timeout(400)
+                search_box = self.page.get_by_role("textbox", name=re.compile("country", re.I))
+                await search_box.click()
+                await search_box.fill(country_name)
+                await self.page.wait_for_timeout(400)
 
-            await self.page.get_by_role("radio", name=country_name).check()
-            await self.page.wait_for_timeout(300)
+                await self.page.get_by_role("radio", name=country_name).check()
+                await self.page.wait_for_timeout(300)
 
-            done_btn = self.page.get_by_role("button", name=re.compile("done", re.I)).first
-            if await done_btn.count() > 0:
-                await done_btn.click()
+                done_btn = self.page.get_by_role("button", name=re.compile("done", re.I)).first
+                if await done_btn.count() > 0:
+                    await done_btn.click()
         except Exception as e:
             logger.warning(f"select_country({country_name}) failed (continuing): {e}")
 
@@ -181,8 +199,11 @@ async def _fingerprint_card(button: Locator, index: int) -> str:
 async def _get_advertiser_info(page: Page) -> dict:
     info: dict = {"name": None, "url": None, "fb_ad_id": None}
     try:
-        dialog = page.get_by_role("dialog", name="Ad details")
-        advertiser_link = dialog.locator("a[href*='facebook.com']").first
+        dialog = page.locator("div[role='dialog']").first
+        if await dialog.count() == 0:
+            return info
+
+        advertiser_link = dialog.locator("a[href*='facebook.com'], a[href*='instagram.com']").first
         if await advertiser_link.count() > 0:
             info["name"] = (await advertiser_link.inner_text()).strip() or None
             info["url"] = await advertiser_link.get_attribute("href")
@@ -191,32 +212,39 @@ async def _get_advertiser_info(page: Page) -> dict:
         m = re.search(r"Library ID[:\s]+(\d+)", dialog_text)
         if m:
             info["fb_ad_id"] = m.group(1)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"_get_advertiser_info error: {e}")
     return info
 
 
 async def _extract_social_links_from_dialog(page: Page) -> list[dict]:
     links: list[dict] = []
     try:
-        dialog = page.get_by_role("dialog", name="Ad details")
-        if not await dialog.is_visible():
+        dialog = page.locator("div[role='dialog']").first
+        if await dialog.count() == 0:
             return links
 
         anchors = await dialog.locator("a").all()
         for a in anchors:
             try:
                 href = await a.get_attribute("href")
-                text = (await a.inner_text()).strip()
-                if not href or href.startswith("javascript:"):
+                if not href or href.startswith("javascript:") or href.startswith("/"):
                     continue
+                
+                # Unwrap facebook redirect links
+                if "l.facebook.com/l.php" in href:
+                    qs = parse_qs(urlparse(href).query)
+                    if "u" in qs:
+                        href = qs["u"][0]
+
+                text = (await a.inner_text()).strip()
                 platform = _detect_platform(href, text)
                 if platform:
                     links.append({"platform": platform, "url": href, "text": text})
             except Exception:
                 continue
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"_extract_social_links error: {e}")
     return _dedupe_links(links)
 
 
