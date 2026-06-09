@@ -10,7 +10,7 @@ from typing import Optional
 
 from playwright.async_api import Locator, Page
 
-from config.settings import get_settings
+from src.config.settings import get_settings
 
 logger = logging.getLogger(__name__)
 

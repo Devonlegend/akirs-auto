@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.deps import db_session
 from api.schemas import GeographyOut
-from db.models import Geography
+from src.db.models import Geography
 
 router = APIRouter(prefix="/geography", tags=["geography"])
 

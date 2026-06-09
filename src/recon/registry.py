@@ -1,4 +1,4 @@
-from config.settings import get_settings
+from src.config.settings import get_settings
 from recon.base import FallbackReconCoordinator
 from recon.data_warehouses import DataWarehouseRecon
 from recon.enrichment_apis import EnrichmentAPIRecon

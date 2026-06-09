@@ -1,6 +1,6 @@
 import pytest
 
-from db.models import Advertiser
+from src.db.models import Advertiser
 from recon.base import ReconCoordinator, ReconFindingData, ReconSource
 from recon.registry import build_default_coordinator
 

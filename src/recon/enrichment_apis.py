@@ -13,8 +13,8 @@ import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config.settings import get_settings
-from db.models import Advertiser, SocialLink
+from src.config.settings import get_settings
+from src.db.models import Advertiser, SocialLink
 from recon.base import ReconFindingData, ReconSource
 from recon.extractors import extract_domain
 

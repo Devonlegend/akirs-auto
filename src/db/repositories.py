@@ -9,7 +9,7 @@ from sqlalchemy import select, func
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from db.models import (
+from src.db.models import (
     Ad,
     Advertiser,
     Geography,
@@ -19,6 +19,7 @@ from db.models import (
     ScrapeJob,
     SocialLink,
     SocialProfile,
+    TaxableEntity,
 )
 
 
@@ -209,3 +210,47 @@ class ReconRepository:
         self.session.add(record)
         await self.session.flush()
         return record
+
+
+class TaxableEntityRepository:
+    def __init__(self, session: AsyncSession):
+        self.session = session
+
+    async def upsert(
+        self, advertiser_id: int, assessment: Any, model: str | None = None
+    ) -> TaxableEntity:
+        """Insert or update the taxable-entity row for an advertiser.
+
+        ``assessment`` is a ``TaxAssessment`` (duck-typed here to avoid importing
+        the taxation package into the db layer). One row per advertiser.
+        """
+        fields = {
+            "legal_name": assessment.legal_name,
+            "entity_type": assessment.entity_type,
+            "emails": "; ".join(assessment.emails) if assessment.emails else None,
+            "phones": "; ".join(assessment.phones) if assessment.phones else None,
+            "address": assessment.address,
+            "taxable_score": float(assessment.taxable_score or 0.0),
+            "reasoning": assessment.reasoning,
+            "raw_json": assessment.model_dump(),
+            "model": model,
+        }
+
+        result = await self.session.execute(
+            select(TaxableEntity).where(TaxableEntity.advertiser_id == advertiser_id)
+        )
+        existing = result.scalar_one_or_none()
+        if existing is not None:
+            for key, value in fields.items():
+                setattr(existing, key, value)
+            await self.session.flush()
+            return existing
+
+        entity = TaxableEntity(advertiser_id=advertiser_id, **fields)
+        self.session.add(entity)
+        await self.session.flush()
+        return entity
+
+    async def list_all(self, limit: int = 1000) -> list[TaxableEntity]:
+        result = await self.session.execute(select(TaxableEntity).limit(limit))
+        return list(result.scalars().all())

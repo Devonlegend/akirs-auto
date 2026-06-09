@@ -13,9 +13,9 @@ from typing import Any
 
 from celery import chord, shared_task
 
-from config.settings import get_settings
+from src.config.settings import get_settings
 from backend.database import AsyncSessionLocal
-from db.repositories import (
+from src.db.repositories import (
     AdRepository,
     AdvertiserRepository,
     GeographyRepository,
@@ -24,8 +24,8 @@ from db.repositories import (
     SocialLinkRepository,
 )
 from keywords import expand
-from scrapers.browser import launch_browser
-from scrapers.facebook_ads import FacebookAdsScraper
+from src.scrapers.browser import launch_browser
+from src.scrapers.facebook_ads import FacebookAdsScraper
 
 logger = logging.getLogger(__name__)
 

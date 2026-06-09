@@ -21,8 +21,8 @@ from urllib.parse import quote_plus
 import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config.settings import get_settings
-from db.models import Advertiser
+from src.config.settings import get_settings
+from src.db.models import Advertiser
 from recon.base import ReconFindingData, ReconSource
 
 logger = logging.getLogger(__name__)

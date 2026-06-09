@@ -1,7 +1,7 @@
 import pytest
 
 from exporters import CSVExportService
-from db.repositories import AdvertiserRepository, SocialLinkRepository
+from src.db.repositories import AdvertiserRepository, SocialLinkRepository
 
 
 @pytest.mark.asyncio

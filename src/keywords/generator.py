@@ -5,10 +5,10 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 
-from config.geography import default_locations
-from keywords.akwa_ibom_matrix import generate_akwa_ibom_keywords
-from keywords.categories import default_categories
-from keywords.llm_expander import get_expander
+from src.config.geography import default_locations
+from src.keywords.akwa_ibom_matrix import generate_akwa_ibom_keywords
+from src.keywords.categories import default_categories
+from src.keywords.llm_expander import get_expander
 
 logger = logging.getLogger(__name__)
 

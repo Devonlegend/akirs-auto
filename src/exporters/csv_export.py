@@ -16,7 +16,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from db.models import Advertiser, ReconFinding, SocialLink
+from src.db.models import Advertiser, ReconFinding, SocialLink
 
 logger = logging.getLogger(__name__)
 

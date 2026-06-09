@@ -16,10 +16,10 @@ import httpx
 from playwright.async_api import Error as PlaywrightError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config.settings import get_settings
-from db.models import Advertiser, RegistryRecord
+from src.config.settings import get_settings
+from src.db.models import Advertiser, RegistryRecord
 from recon.base import ReconFindingData, ReconSource
-from scrapers.browser import launch_browser
+from src.scrapers.browser import launch_browser
 
 logger = logging.getLogger(__name__)
 

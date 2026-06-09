@@ -17,10 +17,10 @@ from playwright.async_api import Error as PlaywrightError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from db.models import Advertiser, SocialLink, SocialProfile
+from src.db.models import Advertiser, SocialLink, SocialProfile
 from recon.base import ReconFindingData, ReconSource
 from recon.extractors import extract_contact_from_bio
-from scrapers.browser import launch_browser
+from src.scrapers.browser import launch_browser
 
 logger = logging.getLogger(__name__)
 

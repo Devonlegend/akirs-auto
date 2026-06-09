@@ -25,7 +25,7 @@ async def _run_recon(advertiser_id: int) -> dict[str, Any]:
     # Imported lazily so the celery app can boot without the recon framework
     # being wired up (it's filled in by task #6).
     from backend.database import AsyncSessionLocal
-    from db.repositories import AdvertiserRepository, ReconRepository
+    from src.db.repositories import AdvertiserRepository, ReconRepository
     from recon.registry import build_default_coordinator
 
     async with AsyncSessionLocal() as session:
@@ -52,13 +52,62 @@ def finalize_recon(results: list[dict[str, Any]], job_id: int) -> dict[str, Any]
         f"{total_findings} findings persisted"
     )
 
+    # Run LLM taxable-entity classification over the advertisers from this job.
+    tax_summary: dict[str, Any] = {}
+    try:
+        tax_summary = _run_tax_classification(results)
+    except Exception:
+        logger.exception("Failed to run tax classification after recon.")
+
     # Optionally trigger chatbot re-index so the vector store stays in sync.
     try:
         _trigger_chatbot_reindex()
     except Exception:
         logger.exception("Failed to trigger chatbot re-index after recon.")
 
-    return {"job_id": job_id, "advertisers": len(results), "findings": total_findings}
+    return {
+        "job_id": job_id,
+        "advertisers": len(results),
+        "findings": total_findings,
+        "taxable": tax_summary.get("taxable", 0),
+    }
+
+
+def _run_tax_classification(results: list[dict[str, Any]]) -> dict[str, Any]:
+    """Classify the advertisers from this recon job for taxability.
+
+    Runs synchronously in the Celery worker, spinning up its own asyncio loop.
+    """
+    import asyncio
+
+    from taxation.processor import run_tax_classification
+
+    advertiser_ids = [
+        int(r["advertiser_id"])
+        for r in results
+        if isinstance(r, dict) and r.get("advertiser_id") is not None
+    ]
+    if not advertiser_ids:
+        return {}
+
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+
+    if loop and loop.is_running():
+        import threading
+
+        box: dict[str, Any] = {}
+        thread = threading.Thread(
+            target=lambda: box.update(
+                asyncio.run(run_tax_classification(advertiser_ids=advertiser_ids))
+            )
+        )
+        thread.start()
+        thread.join()
+        return box
+    return asyncio.run(run_tax_classification(advertiser_ids=advertiser_ids))
 
 
 def _trigger_chatbot_reindex() -> None:

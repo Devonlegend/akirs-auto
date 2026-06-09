@@ -7,8 +7,8 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 import httpx
 
-from config.settings import get_settings
-from db.models import Advertiser, WarehouseVote
+from src.config.settings import get_settings
+from src.db.models import Advertiser, WarehouseVote
 from recon.base import ReconFindingData, ReconSource
 
 logger = logging.getLogger(__name__)

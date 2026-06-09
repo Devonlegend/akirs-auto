@@ -1,5 +1,5 @@
 from keywords import expand
-from keywords.generator import KeywordRunSpec
+from src.keywords.generator import KeywordRunSpec
 
 
 def test_cap_enforced_below_cartesian():

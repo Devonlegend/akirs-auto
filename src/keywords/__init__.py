@@ -1,3 +1,3 @@
-from keywords.generator import expand, KeywordRunSpec
+from src.keywords.generator import expand, KeywordRunSpec
 
 __all__ = ["expand", "KeywordRunSpec"]

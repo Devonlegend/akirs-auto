@@ -89,6 +89,17 @@ class ChatbotCLI:
         """Start the interactive REPL."""
         print(WELCOME.format(collection=f"{_GREEN}{self.collection}{_RESET}"))
 
+        print(f"{_DIM}Starting Ollama and loading {settings.ollama_model}...{_RESET}")
+        try:
+            await self.pipeline.prepare()
+            print(f"{_GREEN}Ollama ready ({settings.ollama_model}).{_RESET}\n")
+        except Exception as exc:
+            print(f"{_RED}Could not start Ollama / load model: {exc}{_RESET}")
+            print(
+                f"{_YELLOW}Make sure Ollama is installed (https://ollama.com/download). "
+                f"Continuing — queries will fail until it's available.{_RESET}\n"
+            )
+
         while True:
             try:
                 raw = input(f"{_GREEN}{self.collection}{_RESET}> ").strip()

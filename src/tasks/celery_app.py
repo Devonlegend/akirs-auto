@@ -6,7 +6,7 @@ inside each task so we don't have to monkey-patch with gevent/eventlet.
 
 from celery import Celery
 
-from config.settings import get_settings
+from src.config.settings import get_settings
 
 settings = get_settings()
 

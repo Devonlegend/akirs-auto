@@ -14,7 +14,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from db.base import Base
+from src.db.base import Base
 
 
 class Geography(Base):
@@ -86,6 +86,9 @@ class Advertiser(Base):
     )
     warehouse_votes: Mapped[list["WarehouseVote"]] = relationship(
         "WarehouseVote", back_populates="advertiser", cascade="all, delete-orphan"
+    )
+    taxable_entity: Mapped["TaxableEntity | None"] = relationship(
+        "TaxableEntity", back_populates="advertiser", cascade="all, delete-orphan", uselist=False
     )
 
 
@@ -175,3 +178,24 @@ class WarehouseVote(Base):
     voted_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     advertiser: Mapped[Advertiser] = relationship("Advertiser", back_populates="warehouse_votes")
+
+
+class TaxableEntity(Base):
+    __tablename__ = "taxable_entities"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    advertiser_id: Mapped[int] = mapped_column(
+        ForeignKey("advertisers.id"), nullable=False, unique=True, index=True
+    )
+    legal_name: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    entity_type: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    emails: Mapped[str | None] = mapped_column(Text, nullable=True)
+    phones: Mapped[str | None] = mapped_column(Text, nullable=True)
+    address: Mapped[str | None] = mapped_column(Text, nullable=True)
+    taxable_score: Mapped[float] = mapped_column(Float, default=0.0)
+    reasoning: Mapped[str | None] = mapped_column(Text, nullable=True)
+    raw_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    model: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    assessed_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    advertiser: Mapped[Advertiser] = relationship("Advertiser", back_populates="taxable_entity")

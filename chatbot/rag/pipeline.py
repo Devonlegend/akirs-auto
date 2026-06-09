@@ -126,6 +126,15 @@ class RAGPipeline:
             "retrieved_count": len(chunks),
         }
 
+    async def prepare(self) -> None:
+        """Ensure the LLM backend is ready (server up, model pulled, warmed).
+
+        No-op for backends that don't implement ``ensure_ready``.
+        """
+        ensure_ready = getattr(self._llm, "ensure_ready", None)
+        if ensure_ready is not None:
+            await ensure_ready()
+
     async def health_check(self) -> dict:
         """Check the health of both the LLM and vector store."""
         llm_ok = await self._llm.health_check()

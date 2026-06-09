@@ -8,7 +8,7 @@ from sqlalchemy.orm import selectinload
 
 from api.deps import db_session
 from api.schemas import AdvertiserOut, ReconFindingOut, SocialLinkOut
-from db.models import Advertiser, ReconFinding
+from src.db.models import Advertiser, ReconFinding
 from exporters import CSVExportService
 
 router = APIRouter(prefix="/advertisers", tags=["advertisers"])

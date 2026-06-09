@@ -6,8 +6,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.deps import db_session
 from api.schemas import JobCreatedResponse, JobStatusResponse, ScrapeJobRequest
-from db.models import Ad, Advertiser, KeywordRun, ScrapeJob
-from db.repositories import JobRepository
+from src.db.models import Ad, Advertiser, KeywordRun, ScrapeJob
+from src.db.repositories import JobRepository
 from tasks.phase1_scrape import scrape_facebook_ads_job
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])

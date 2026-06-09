@@ -7,7 +7,7 @@ from collections.abc import AsyncIterator
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from db.base import Base
+from src.db.base import Base
 from db import models  # noqa: F401 — register tables
 
 

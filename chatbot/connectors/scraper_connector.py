@@ -173,8 +173,8 @@ async def run_scraper_ingest(
         if str(src_path) not in sys.path:
             sys.path.insert(0, str(src_path))
 
-        from db.base import get_engine, get_session_factory
-        from db.models import (
+        from src.db.base import get_engine, get_session_factory
+        from src.db.models import (
             Advertiser,
             ReconFinding,
             RegistryRecord,

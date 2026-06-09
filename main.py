@@ -16,9 +16,9 @@ import asyncio
 import logging
 from datetime import datetime, UTC
 
-from config.settings import get_settings
-from db.base import get_session_factory
-from db.repositories import (
+from src.config.settings import get_settings
+from src.db.base import get_session_factory
+from src.db.repositories import (
     AdRepository,
     AdvertiserRepository,
     GeographyRepository,
@@ -27,9 +27,9 @@ from db.repositories import (
     ReconRepository,
     SocialLinkRepository,
 )
-from keywords import expand
-from scrapers.browser import launch_browser
-from scrapers.facebook_ads import FacebookAdsScraper
+from src.keywords import expand
+from src.scrapers.browser import launch_browser
+from src.scrapers.facebook_ads import FacebookAdsScraper
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s — %(message)s")
 logger = logging.getLogger("akirs.cli")
@@ -52,7 +52,7 @@ async def _run_recon(
         logger.info("No new advertisers — skipping recon")
         return
 
-    from recon.registry import build_default_coordinator  # noqa: PLC0415
+    from src.recon.registry import build_default_coordinator  # noqa: PLC0415
 
     coordinator = build_default_coordinator()
     logger.info("Starting Phase 2 recon for %d advertisers", len(new_advertiser_ids))
@@ -91,7 +91,7 @@ async def _export_csv(factory) -> None:
     Args:
         factory: Async session factory.
     """
-    from exporters.csv_export import CSVExportService  # noqa: PLC0415
+    from src.exporters.csv_export import CSVExportService  # noqa: PLC0415
 
     settings = get_settings()
     timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")

@@ -5,8 +5,8 @@ from typing import Any
 
 from playwright.async_api import Page
 
-from scrapers.base import AbstractScraper
-from scrapers.facebook_ads.page import FacebookAdsLibraryPage
+from src.scrapers.base import AbstractScraper
+from src.scrapers.facebook_ads.page import FacebookAdsLibraryPage
 
 logger = logging.getLogger(__name__)
 

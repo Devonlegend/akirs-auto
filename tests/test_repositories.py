@@ -1,6 +1,6 @@
 import pytest
 
-from db.repositories import AdvertiserRepository, ReconRepository, SocialLinkRepository
+from src.db.repositories import AdvertiserRepository, ReconRepository, SocialLinkRepository
 
 
 @pytest.mark.asyncio

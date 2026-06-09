@@ -27,7 +27,7 @@ import logging
 import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from db.models import Advertiser
+from src.db.models import Advertiser
 from recon.base import ReconFindingData, ReconSource
 
 logger = logging.getLogger(__name__)

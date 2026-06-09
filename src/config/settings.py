@@ -68,6 +68,11 @@ class Settings(BaseSettings):
 
     output_dir: Path = Field(default=Path("output"))
 
+    # Taxation / LLM classification (Ollama phi4-mini via OpenAI-compatible API)
+    ollama_base_url: str = Field(default="http://localhost:11434")
+    tax_model: str = Field(default="phi4-mini")
+    tax_concurrency: int = Field(default=2)
+
     @property
     def broker_url(self) -> str:
         return self.celery_broker_url or self.redis_url

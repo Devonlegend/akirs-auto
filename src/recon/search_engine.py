@@ -16,8 +16,8 @@ import httpx
 from bs4 import BeautifulSoup
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config.settings import get_settings
-from db.models import Advertiser
+from src.config.settings import get_settings
+from src.db.models import Advertiser
 from recon.base import ReconFindingData, ReconSource
 from recon.extractors import extract_emails, extract_phones
 
