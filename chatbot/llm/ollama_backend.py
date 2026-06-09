@@ -108,6 +108,7 @@ class OllamaBackend(LLMBackend):
         )
 
     @override
+    @override
     async def health_check(self) -> bool:
         """Check if Ollama is reachable and the model is available."""
         try:
@@ -116,13 +117,17 @@ class OllamaBackend(LLMBackend):
             )
             resp.raise_for_status()
             data = resp.json()
-            models = [m.get("name", "") for m in data.get("models", [])]
+            if not isinstance(data, dict):
+                return False
+            models_list = data.get("models")
+            if not isinstance(models_list, list):
+                return False
+            models = [m.get("name", "") for m in models_list if isinstance(m, dict)]
             # Check if our model (or a prefix match) is available.
             available = any(
                 m == self._model or m.startswith(f"{self._model}:")
                 for m in models
             )
-            if not available:
                 logger.warning(
                     "Model '%s' not found in Ollama. Available: %s",
                     self._model,
