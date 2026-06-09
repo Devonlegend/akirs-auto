@@ -51,4 +51,37 @@ def finalize_recon(results: list[dict[str, Any]], job_id: int) -> dict[str, Any]
         f"Recon complete for job {job_id}: {len(results)} advertisers processed, "
         f"{total_findings} findings persisted"
     )
+
+    # Optionally trigger chatbot re-index so the vector store stays in sync.
+    try:
+        _trigger_chatbot_reindex()
+    except Exception:
+        logger.exception("Failed to trigger chatbot re-index after recon.")
+
     return {"job_id": job_id, "advertisers": len(results), "findings": total_findings}
+
+
+def _trigger_chatbot_reindex() -> None:
+    """Trigger the chatbot to re-index from the scraper database.
+
+    This runs synchronously in the Celery worker process — it spins up its
+    own asyncio loop to run the async scraper connector.
+    """
+    import asyncio
+
+    from chatbot.connectors.scraper_connector import run_scraper_ingest
+
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+
+    if loop and loop.is_running():
+        import threading
+        thread = threading.Thread(
+            target=lambda: asyncio.run(run_scraper_ingest(collection="akirs_businesses"))
+        )
+        thread.start()
+        thread.join()
+    else:
+        asyncio.run(run_scraper_ingest(collection="akirs_businesses"))

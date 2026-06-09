@@ -31,3 +31,6 @@ Thumbs.db
 .claude/
 agent*.md
 *.db
+
+# Chatbot vector store (ChromaDB persistent storage)
+chatbot_data/

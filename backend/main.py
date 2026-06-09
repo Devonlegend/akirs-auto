@@ -1,7 +1,11 @@
-from fastapi import FastAPI
 from contextlib import asynccontextmanager
-from backend.database import engine, Base
+
+from fastapi import FastAPI
+
+from backend.database import Base, engine
 from backend.routers import scraped
+from chatbot.api.routes import router as chatbot_router
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -9,9 +13,12 @@ async def lifespan(app: FastAPI):
         await conn.run_sync(Base.metadata.create_all)
     yield
 
+
 app = FastAPI(title="Akirs Auto Backend", lifespan=lifespan)
 
 app.include_router(scraped.router)
+app.include_router(chatbot_router)
+
 
 @app.get("/health")
 async def health_check():
