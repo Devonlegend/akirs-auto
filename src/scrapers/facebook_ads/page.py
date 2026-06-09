@@ -71,17 +71,24 @@ class FacebookAdsLibraryPage:
         self.settings = get_settings()
 
     async def navigate(self) -> None:
-        await self.page.goto(self.settings.fb_ads_base_url)
-        await self.page.wait_for_load_state("networkidle")
+        for attempt in range(4):
+            await self.page.goto(self.settings.fb_ads_base_url)
+            await self.page.wait_for_load_state("networkidle")
+            await self.page.wait_for_timeout(2000)
+            
+            error_msg = self.page.locator("text=/something went wrong/i").first
+            if await error_msg.count() > 0:
+                logger.warning(f"Encountered 'Something went wrong' on load. Hard navigating (attempt {attempt + 1}/4)...")
+                await self.page.wait_for_timeout(3000)
+                await self.page.goto(self.settings.fb_ads_base_url)
+                await self.page.wait_for_load_state("networkidle")
+            else:
+                break
 
     async def select_country(self, country_name: str) -> None:
         try:
             await self.page.wait_for_timeout(900)
-            combos = self.page.get_by_role("combobox")
-            if await combos.count() > 0:
-                country_combo = combos.nth(0)
-            else:
-                country_combo = self.page.locator("div[role='button']").filter(has_text=re.compile(f"country|{country_name}|all", re.I)).first
+            country_combo = self.page.locator("div[role='button'], div[role='combobox']").filter(has_text=re.compile(f"country|{country_name}", re.I)).first
             
             if await country_combo.count() > 0:
                 current_text = await country_combo.inner_text()
@@ -91,9 +98,13 @@ class FacebookAdsLibraryPage:
                 await country_combo.click(timeout=5000)
                 await self.page.wait_for_timeout(400)
 
-                search_box = self.page.get_by_role("textbox", name=re.compile("country", re.I))
+                search_box = self.page.get_by_role("textbox", name=re.compile("country", re.I)).first
+                if await search_box.count() == 0:
+                    search_box = self.page.locator("input[placeholder*='earch']").first
                 await search_box.click()
-                await search_box.fill(country_name)
+                await search_box.press("Control+A")
+                await search_box.press("Backspace")
+                await search_box.press_sequentially(country_name, delay=100)
                 await self.page.wait_for_timeout(400)
 
                 await self.page.get_by_role("radio", name=country_name).check()
@@ -107,31 +118,61 @@ class FacebookAdsLibraryPage:
 
     async def select_ad_category(self, category: str = "All ads") -> None:
         try:
-            dropdown = self.page.locator('div[role="combobox"]:has-text("Ad category")').first
+            dropdown = self.page.locator('div[role="combobox"], div[role="button"]').filter(has_text=re.compile("Ad category", re.I)).first
             if await dropdown.count() > 0:
                 await dropdown.click()
             else:
                 await self.page.get_by_text("Ad category").first.click()
             await self.page.wait_for_timeout(400)
+            
             option = self.page.get_by_role("option", name=category).first
             if await option.count() == 0:
-                option = self.page.locator(f'span:has-text("{category}")').first
+                option = self.page.locator(f'div[role="button"], span').filter(has_text=re.compile(category, re.I)).first
             await option.click()
             await self.page.wait_for_timeout(400)
         except Exception as e:
             logger.warning(f"select_ad_category({category}) failed (continuing): {e}")
 
     async def search_keyword(self, keyword: str) -> None:
-        try:
-            search_box = self.page.get_by_placeholder(re.compile("search by keyword", re.I))
-            await search_box.fill(keyword)
-            await search_box.press("Enter")
-            await self.page.wait_for_load_state("networkidle", timeout=15000)
-        except Exception as e:
-            logger.warning(f"search_keyword({keyword}) failed: {e}")
+        for attempt in range(3):
+            try:
+                search_box = self.page.get_by_placeholder(re.compile("search|keyword", re.I)).first
+                if await search_box.count() == 0:
+                     search_box = self.page.locator("input[type='text']").last
+                
+                await search_box.click()
+                await self.page.wait_for_timeout(300)
+                await search_box.press("Control+A")
+                await search_box.press("Backspace")
+                await self.page.wait_for_timeout(200)
+                
+                # Human typing simulation
+                await search_box.press_sequentially(keyword, delay=120)
+                await self.page.wait_for_timeout(500)
+                await search_box.press("Enter")
+                
+                await self.page.wait_for_load_state("networkidle", timeout=15000)
+                await self.page.wait_for_timeout(3000)
+                
+                # Check if it errored out after searching
+                error_msg = self.page.locator("text=/something went wrong/i").first
+                if await error_msg.count() > 0:
+                    logger.warning(f"Search errored for '{keyword}'. Hard resetting page (attempt {attempt+1}/3)...")
+                    await self.navigate()
+                    await self.select_country(self.settings.fb_ads_country)
+                    await self.select_ad_category("All ads")
+                    continue
+                else:
+                    break
+            except Exception as e:
+                logger.warning(f"search_keyword({keyword}) failed: {e}")
+                break
+
+    def _get_ad_buttons(self) -> Locator:
+        return self.page.locator("div[role='button'], a, button").filter(has_text=re.compile(r"ad details", re.I))
 
     async def visible_ad_count(self) -> int:
-        return await self.page.locator(self.AD_DETAILS_BUTTON_SELECTOR).count()
+        return await self._get_ad_buttons().count()
 
     async def _scroll_to_load_more(self) -> bool:
         """Scroll once. Return True if document height changed (i.e. content loaded)."""
@@ -153,9 +194,19 @@ class FacebookAdsLibraryPage:
         empty_scrolls = 0
         scroll_count = 0
         seen_fingerprints: set[str] = set()
+        
+        # Debug dump if no ads found on initial load
+        if await self.visible_ad_count() == 0:
+            logger.warning("0 ad details buttons found on initial load, dumping debug info...")
+            try:
+                await self.page.screenshot(path="output/debug_fb.png", full_page=True)
+                with open("output/debug_fb.html", "w") as f:
+                    f.write(await self.page.content())
+            except Exception as e:
+                logger.error(f"Failed to dump debug files: {e}")
 
         while yielded < target_count and scroll_count <= max_scrolls:
-            buttons = self.page.locator(self.AD_DETAILS_BUTTON_SELECTOR)
+            buttons = self._get_ad_buttons()
             count = await buttons.count()
             new_in_pass = 0
             for i in range(count):
