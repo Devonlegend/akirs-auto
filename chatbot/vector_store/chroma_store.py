@@ -76,7 +76,7 @@ class ChromaVectorStore(VectorStore):
         where: dict | None = None,
     ) -> list[StoredChunk]:
         try:
-            coll = self._client.get_collection(collection)
+            coll = await asyncio.to_thread(self._client.get_collection, collection)
         except (ValueError, Exception):
             return []
 
@@ -84,7 +84,7 @@ class ChromaVectorStore(VectorStore):
         if where is not None:
             kwargs["where"] = where
 
-        results = coll.query(**kwargs)
+        results = await asyncio.to_thread(coll.query, **kwargs)
 
         chunks: list[StoredChunk] = []
         if results["ids"] and results["ids"][0]:
