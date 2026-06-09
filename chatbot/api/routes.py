@@ -164,11 +164,13 @@ async def list_collections() -> CollectionsResponse:
     """List all available collections and their document counts."""
     ingestor = _get_ingestor()
     names = await ingestor.store.list_collections()
-    infos: list[CollectionInfo] = []
-    for name in names:
+
+    async def get_info(name: str) -> CollectionInfo:
         count = await ingestor.store.collection_count(name)
-        infos.append(CollectionInfo(name=name, document_count=count))
-    return CollectionsResponse(collections=infos)
+        return CollectionInfo(name=name, document_count=count)
+
+    infos = await asyncio.gather(*(get_info(name) for name in names))
+    return CollectionsResponse(collections=list(infos))
 
 
 @router.delete("/collections/{name}")
