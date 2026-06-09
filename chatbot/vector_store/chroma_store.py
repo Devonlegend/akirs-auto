@@ -53,12 +53,13 @@ class ChromaVectorStore(VectorStore):
         metadatas: list[dict],
         ids: list[str],
     ) -> None:
-        coll = self._get_or_create_collection(collection)
+        coll = await asyncio.to_thread(self._get_or_create_collection, collection)
 
         # ChromaDB metadata values must be str, int, float, or bool.
         clean_metas = [_sanitize_metadata(m) for m in metadatas]
 
-        coll.add(
+        await asyncio.to_thread(
+            coll.add,
             ids=ids,
             documents=chunks,
             embeddings=embeddings,
