@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="AKIRS scraper static frontend for finding business contact details and preparing tax revenue payment outreach."
+    />
+    <title>AKIRS Scraper Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="css/styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="#/dashboard" aria-label="AKIRS scraper home">
+        <img class="brand__logo" src="assets/akirs-logo.png" alt="" />
+        <span>AKIRS Scraper</span>
+      </a>
+      <label class="topbar__search">
+        <span class="material-symbols-outlined">search</span>
+        <input id="global-search" type="search" placeholder="Search businesses, leads, locations..." />
+      </label>
+      <div class="topbar__actions">
+        <span class="status-chip"><span></span> Browser is Active</span>
+        <span class="counter-chip">3 Running Jobs</span>
+        <button id="theme-toggle" class="icon-button" type="button" aria-label="Toggle theme">
+          <span class="material-symbols-outlined">dark_mode</span>
+        </button>
+        <button class="icon-button" type="button" aria-label="Notifications">
+          <span class="material-symbols-outlined">notifications</span>
+        </button>
+        <button class="icon-button" type="button" aria-label="Settings">
+          <span class="material-symbols-outlined">settings</span>
+        </button>
+        <div class="auth-menu">
+          <button id="auth-toggle" class="profile-button" type="button" aria-label="Open user profile" aria-expanded="false">
+            <span class="profile-button__avatar">AM</span>
+            <span class="profile-button__text">
+              <strong>Akirs Manager</strong>
+              <small>Revenue officer</small>
+            </span>
+            <span class="material-symbols-outlined">expand_more</span>
+          </button>
+          <section id="auth-panel" class="auth-panel" aria-label="User profile panel" hidden>
+            <div class="auth-panel__header">
+              <span class="profile-button__avatar">AM</span>
+              <div>
+                <strong>Akirs Manager</strong>
+                <small>manager@akirs.gov.ng</small>
+              </div>
+            </div>
+            <button class="button button--block" type="button">
+              <span class="material-symbols-outlined">manage_accounts</span>
+              Profile
+            </button>
+            <button class="button button--block" type="button">
+              <span class="material-symbols-outlined">logout</span>
+              Sign Out
+            </button>
+          </section>
+        </div>
+      </div>
+    </header>
+
+    <aside class="sidebar">
+      <button id="sidebar-toggle" class="sidebar-toggle" type="button" aria-label="Collapse sidebar">
+        <span class="material-symbols-outlined">menu_open</span>
+      </button>
+      <div class="unit-card">
+        <span class="material-symbols-outlined">travel_explore</span>
+        <div>
+          <strong>Scraper Operations</strong>
+          <small>Business Leads</small>
+        </div>
+      </div>
+      <nav class="nav-list" aria-label="Primary navigation">
+        <a href="#/dashboard" data-route="dashboard">
+          <span class="material-symbols-outlined">dashboard</span>
+          <span>Dashboard</span>
+        </a>
+        <a href="#/scraper" data-route="scraper">
+          <span class="material-symbols-outlined">settings_remote</span>
+          <span>Scraper</span>
+        </a>
+        <a href="#/results" data-route="results">
+          <span class="material-symbols-outlined">manage_search</span>
+          <span>Results</span>
+        </a>
+        <a href="#/review" data-route="review">
+          <span class="material-symbols-outlined">fact_check</span>
+          <span>Review Queue</span>
+        </a>
+        <a href="#/taxable" data-route="taxable">
+          <span class="material-symbols-outlined">request_quote</span>
+          <span>Taxable Businesses</span>
+        </a>
+        <a href="#/analytics" data-route="analytics">
+          <span class="material-symbols-outlined">monitoring</span>
+          <span>Analytics</span>
+        </a>
+        <a href="#/settings" data-route="settings">
+          <span class="material-symbols-outlined">settings</span>
+          <span>Settings</span>
+        </a>
+      </nav>
+      <div class="sidebar__footer">
+        <button class="button button--primary button--block" type="button">
+          <span class="material-symbols-outlined">play_circle</span>
+          New Scrape Job
+        </button>
+        <a href="#">
+          <span class="material-symbols-outlined">help</span>
+          Docs
+        </a>
+        <a href="#">
+          <span class="material-symbols-outlined">contact_support</span>
+          Support
+        </a>
+      </div>
+    </aside>
+
+    <main id="app" class="app-shell" tabindex="-1"></main>
+
+    <div id="drawer-root"></div>
+    <script src="js/app.js" defer></script>
+  </body>
+</html>
