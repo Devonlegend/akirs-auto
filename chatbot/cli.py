@@ -19,11 +19,6 @@ from chatbot.config import settings
 from chatbot.ingestion.ingestor import Ingestor
 from chatbot.rag.pipeline import RAGPipeline
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    datefmt="%H:%M:%S",
-)
 logger = logging.getLogger("chatbot.cli")
 
 
@@ -102,7 +97,7 @@ class ChatbotCLI:
 
         while True:
             try:
-                raw = input(f"{_GREEN}{self.collection}{_RESET}> ").strip()
+                raw = (await asyncio.to_thread(input, f"{_GREEN}{self.collection}{_RESET}> ")).strip()
             except (EOFError, KeyboardInterrupt):
                 print()
                 break
@@ -115,6 +110,7 @@ class ChatbotCLI:
             else:
                 await self._handle_question(raw)
 
+        await self.pipeline.aclose()
         print(f"\n{_DIM}Goodbye!{_RESET}")
 
     # ------------------------------------------------------------------
@@ -320,6 +316,11 @@ def _wrap(text: str, width: int = 80) -> str:
 
 
 def main() -> None:
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        datefmt="%H:%M:%S",
+    )
     parser = argparse.ArgumentParser(
         description="Akirs RAG Chatbot — interactive CLI powered by Phi-4-mini via Ollama.",
     )

@@ -41,13 +41,52 @@ class OllamaBackend(LLMBackend):
         model: str | None = None,
         base_url: str | None = None,
         timeout: float | None = None,
+        *,
+        max_retries: int = 2,
+        retry_backoff: float = 0.5,
     ) -> None:
         self._model = model or settings.ollama_model
         self._base_url = (base_url or settings.ollama_base_url).rstrip("/")
         timeout_val = timeout if timeout is not None else settings.llm_timeout_seconds
+        self._max_retries = max_retries
+        self._retry_backoff = retry_backoff
         self._client = httpx.AsyncClient(
             timeout=httpx.Timeout(timeout_val),
         )
+
+    async def _request_with_retry(
+        self, method: str, url: str, **kwargs: object
+    ) -> httpx.Response:
+        """Issue an HTTP request, retrying only on transient transport/timeout errors.
+
+        HTTP status errors (4xx/5xx) are NOT retried — they surface immediately.
+        """
+        attempt = 0
+        while True:
+            try:
+                resp = await self._client.request(method, url, **kwargs)
+                resp.raise_for_status()
+                return resp
+            except (httpx.TransportError, httpx.TimeoutException) as exc:
+                if attempt >= self._max_retries:
+                    logger.error(
+                        "Ollama request %s %s failed after %d attempts: %s",
+                        method,
+                        url,
+                        attempt + 1,
+                        exc,
+                    )
+                    raise
+                delay = self._retry_backoff * (2**attempt)
+                logger.warning(
+                    "Ollama request %s %s failed (%s) — retrying in %.1fs.",
+                    method,
+                    url,
+                    exc,
+                    delay,
+                )
+                await asyncio.sleep(delay)
+                attempt += 1
 
     # ------------------------------------------------------------------
     # Startup bootstrap
@@ -224,11 +263,11 @@ class OllamaBackend(LLMBackend):
         logger.debug("Calling Ollama model=%s ...", self._model)
 
         try:
-            resp = await self._client.post(
+            resp = await self._request_with_retry(
+                "POST",
                 f"{self._base_url}{_OLLAMA_CHAT_ENDPOINT}",
                 json=payload,
             )
-            resp.raise_for_status()
             data = resp.json()
         except httpx.HTTPError as exc:
             logger.error("Ollama API call failed: %s", exc)
@@ -251,14 +290,13 @@ class OllamaBackend(LLMBackend):
         )
 
     @override
-    @override
     async def health_check(self) -> bool:
         """Check if Ollama is reachable and the model is available."""
         try:
-            resp = await self._client.get(
+            resp = await self._request_with_retry(
+                "GET",
                 f"{self._base_url}{_OLLAMA_TAGS_ENDPOINT}",
             )
-            resp.raise_for_status()
             data = resp.json()
             if not isinstance(data, dict):
                 return False
@@ -271,11 +309,12 @@ class OllamaBackend(LLMBackend):
                 m == self._model or m.startswith(f"{self._model}:")
                 for m in models
             )
-            logger.warning(
+            if not available:
+                logger.warning(
                     "Model '%s' not found in Ollama. Available: %s",
                     self._model,
                     models,
-            )
+                )
             return available
         except httpx.HTTPError as exc:
             logger.error("Ollama health check failed: %s", exc)

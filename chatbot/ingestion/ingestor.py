@@ -171,22 +171,9 @@ class Ingestor:
     async def delete_document(self, collection: str, doc_id: str) -> None:
         """Delete all chunks belonging to *doc_id* from *collection*.
 
-        Best-effort: relies on ChromaDB's delete-by-metadata filter.
+        Best-effort: delegates to the vector store's delete-by-document support.
         """
-        store = self._store
-        if not isinstance(store, ChromaVectorStore):
-            logger.warning("delete_document only supported for ChromaVectorStore.")
-            return
-        try:
-            coll = store._client.get_collection(collection)
-            coll.delete(where={"doc_id": doc_id})
-            logger.info("Deleted chunks for doc_id=%s from '%s'.", doc_id, collection)
-        except Exception:
-            logger.warning(
-                "Could not delete doc_id=%s — collection '%s' may not exist.",
-                doc_id,
-                collection,
-            )
+        await self._store.delete_document(collection, doc_id)
 
     # ------------------------------------------------------------------
     # Convenience properties

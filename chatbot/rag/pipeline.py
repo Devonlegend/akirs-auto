@@ -8,7 +8,7 @@ import time
 from chatbot.config import settings
 from chatbot.llm.base import LLMBackend, LLMResponse
 from chatbot.llm.ollama_backend import OllamaBackend
-from chatbot.rag.prompt_builder import build_prompt
+from chatbot.rag.prompt_builder import GENERAL_SYSTEM_PROMPT, build_prompt
 from chatbot.retrieval.retriever import Retriever, format_context
 from chatbot.vector_store.base import StoredChunk
 
@@ -80,9 +80,28 @@ class RAGPipeline:
             where=where,
         )
 
-        if not chunks:
+        # 1b. Drop low-relevance matches so off-topic queries (greetings, small
+        # talk) don't get answered against junk context.
+        relevant = [c for c in chunks if c.score >= settings.relevance_threshold]
+        if len(relevant) != len(chunks):
+            logger.debug(
+                "Filtered %d/%d chunks below relevance threshold %.2f.",
+                len(chunks) - len(relevant),
+                len(chunks),
+                settings.relevance_threshold,
+            )
+
+        if not relevant:
+            # No relevant documents — fall back to a general conversational
+            # answer (greetings, small talk, simple questions) instead of refusing.
+            response = await self._llm.generate(
+                system_prompt=GENERAL_SYSTEM_PROMPT,
+                context="",
+                question=question,
+                temperature=temperature,
+            )
             return {
-                "answer": "I don't have any information in the provided context to answer that.",
+                "answer": response.content,
                 "sources": [],
                 "collection": collection,
                 "elapsed_ms": (time.monotonic() - t0) * 1000,
@@ -90,7 +109,7 @@ class RAGPipeline:
             }
 
         # 2. Format context.
-        context = format_context(chunks)
+        context = format_context(relevant)
 
         # 3. Build prompts.
         sys_prompt, user_context = build_prompt(
@@ -108,13 +127,13 @@ class RAGPipeline:
         )
 
         # 5. Build source citations.
-        sources = _build_sources(chunks)
+        sources = _build_sources(relevant)
 
         elapsed_ms = (time.monotonic() - t0) * 1000
         logger.info(
             "RAG query complete: '%s' → %d chunks, %.0f ms.",
             question[:80],
-            len(chunks),
+            len(relevant),
             elapsed_ms,
         )
 
@@ -123,7 +142,7 @@ class RAGPipeline:
             "sources": sources,
             "collection": collection,
             "elapsed_ms": elapsed_ms,
-            "retrieved_count": len(chunks),
+            "retrieved_count": len(relevant),
         }
 
     async def prepare(self) -> None:
@@ -135,16 +154,26 @@ class RAGPipeline:
         if ensure_ready is not None:
             await ensure_ready()
 
+    async def aclose(self) -> None:
+        """Release backend resources (e.g. the LLM's HTTP client).
+
+        No-op for backends that don't implement ``close``.
+        """
+        close = getattr(self._llm, "close", None)
+        if close is not None:
+            await close()
+
     async def health_check(self) -> dict:
         """Check the health of both the LLM and vector store."""
+        store = self._retriever.store
         llm_ok = await self._llm.health_check()
-        collections = await self._retriever._store.list_collections()
+        collections = await store.list_collections()
         return {
             "llm_ok": llm_ok,
             "model": settings.ollama_model,
             "collections": collections,
             "collection_counts": {
-                c: await self._retriever._store.collection_count(c)
+                c: await store.collection_count(c)
                 for c in collections
             },
         }

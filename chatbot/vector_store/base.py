@@ -72,6 +72,15 @@ class VectorStore(ABC):
         ...
 
     @abstractmethod
+    async def delete_document(self, collection: str, doc_id: str) -> None:
+        """Delete all chunks belonging to *doc_id* from *collection*.
+
+        Best-effort: implementations should not raise if the collection or
+        document does not exist.
+        """
+        ...
+
+    @abstractmethod
     async def list_collections(self) -> list[str]:
         """Return the names of all existing collections."""
         ...

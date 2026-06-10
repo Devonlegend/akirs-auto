@@ -80,6 +80,12 @@ class ChatbotSettings(BaseSettings):
         le=50,
         description="Default number of chunks to retrieve per query.",
     )
+    relevance_threshold: float = Field(
+        default=0.3,
+        ge=0.0,
+        le=1.0,
+        description="Minimum chunk score (1 - cosine_distance) to count as relevant context.",
+    )
 
     # -- Scraper DB ---------------------------------------------------------
     scraper_db_url: str = Field(

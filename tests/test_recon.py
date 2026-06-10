@@ -62,7 +62,8 @@ def test_default_coordinator_registers_expected_sources():
     names = {src.name for tier in coord.tiers for src in tier}
     assert names == {
         "website",       # tier 1
-        "search", "social", "nominatim",  # tier 2 (free)
+        # tier 2 (free)
+        "search", "social", "nominatim", "google_maps", "cac_registry", "linkedin_ddg",
         "places", "registry", "warehouse", "enrichment",  # tier 3 (paid/stubbed)
     }
 
@@ -71,7 +72,9 @@ def test_default_coordinator_orders_free_before_paid():
     coord = build_default_coordinator()
     # Tier 2 must contain only free sources — none require API keys.
     tier_2_names = {s.name for s in coord.tiers[1]}
-    assert tier_2_names == {"search", "social", "nominatim"}
+    assert tier_2_names == {
+        "search", "social", "nominatim", "google_maps", "cac_registry", "linkedin_ddg",
+    }
     # Tier 3 holds the paid / key-gated providers.
     tier_3_names = {s.name for s in coord.tiers[2]}
     assert "places" in tier_3_names and "enrichment" in tier_3_names

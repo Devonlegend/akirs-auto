@@ -77,7 +77,8 @@ class ChromaVectorStore(VectorStore):
     ) -> list[StoredChunk]:
         try:
             coll = await asyncio.to_thread(self._client.get_collection, collection)
-        except (ValueError, Exception):
+        except Exception:
+            logger.debug("Collection '%s' not found for query — returning no results.", collection)
             return []
 
         kwargs: dict = {"query_embeddings": [query_embedding], "n_results": top_k}
@@ -114,8 +115,24 @@ class ChromaVectorStore(VectorStore):
         try:
             self._client.delete_collection(collection)
             logger.info("Deleted collection '%s'.", collection)
-        except (ValueError, Exception):
+        except Exception:
             logger.warning("Collection '%s' does not exist — nothing to delete.", collection)
+
+    @override
+    async def delete_document(self, collection: str, doc_id: str) -> None:
+        def _delete() -> None:
+            coll = self._client.get_collection(collection)
+            coll.delete(where={"doc_id": doc_id})
+
+        try:
+            await asyncio.to_thread(_delete)
+            logger.info("Deleted chunks for doc_id=%s from '%s'.", doc_id, collection)
+        except Exception:
+            logger.warning(
+                "Could not delete doc_id=%s — collection '%s' may not exist.",
+                doc_id,
+                collection,
+            )
 
     @override
     async def list_collections(self) -> list[str]:
@@ -126,7 +143,8 @@ class ChromaVectorStore(VectorStore):
         try:
             coll = self._client.get_collection(collection)
             return coll.count()
-        except (ValueError, Exception):
+        except Exception:
+            logger.debug("Collection '%s' not found — count is 0.", collection)
             return 0
 
     # ------------------------------------------------------------------
@@ -141,7 +159,7 @@ class ChromaVectorStore(VectorStore):
         """
         try:
             return self._client.get_collection(name)
-        except (ValueError, Exception):
+        except Exception:
             logger.info("Creating new ChromaDB collection '%s'.", name)
             return self._client.create_collection(
                 name=name,

@@ -49,6 +49,19 @@ def _get_pipeline() -> RAGPipeline:
     return _pipeline
 
 
+async def prepare_pipeline() -> None:
+    """Ensure the shared pipeline's LLM backend is ready (called at app startup)."""
+    await _get_pipeline().prepare()
+
+
+async def shutdown_pipeline() -> None:
+    """Release the shared pipeline's resources (called at app shutdown)."""
+    global _pipeline
+    if _pipeline is not None:
+        await _pipeline.aclose()
+        _pipeline = None
+
+
 # ------------------------------------------------------------------
 # Ingest
 # ------------------------------------------------------------------
@@ -96,7 +109,7 @@ async def ingest_from_scraper(body: IngestFromScraperRequest) -> IngestFromScrap
         logger.exception("Scraper ingest failed.")
         raise HTTPException(
             status_code=500,
-            detail=f"Scraper ingest failed: {exc}",
+            detail="Scraper ingest failed.",
         ) from exc
 
 
@@ -131,7 +144,7 @@ async def chat(body: ChatRequest) -> ChatResponse:
         logger.exception("Chat query failed.")
         raise HTTPException(
             status_code=500,
-            detail=f"Query failed: {exc}",
+            detail="Internal error processing the request.",
         ) from exc
 
     sources = [

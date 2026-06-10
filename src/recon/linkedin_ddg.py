@@ -16,7 +16,7 @@ from bs4 import BeautifulSoup
 from playwright.async_api import Error as PlaywrightError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from db.models import Advertiser
+from src.db.models import Advertiser
 from recon.base import ReconFindingData, ReconSource
 from scrapers.browser import launch_browser
 

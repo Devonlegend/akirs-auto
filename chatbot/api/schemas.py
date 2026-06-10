@@ -26,6 +26,7 @@ class IngestRequest(BaseModel):
     text: str = Field(
         ...,
         min_length=1,
+        max_length=100_000,
         description="Raw text content to ingest.",
     )
     metadata: dict[str, Any] | None = Field(

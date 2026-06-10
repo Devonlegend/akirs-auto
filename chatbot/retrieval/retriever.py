@@ -72,6 +72,11 @@ class Retriever:
         )
         return chunks
 
+    @property
+    def store(self) -> VectorStore:
+        """The underlying vector store (for stats / health checks)."""
+        return self._store
+
 
 def format_context(chunks: list[StoredChunk], *, max_tokens: int = 2000) -> str:
     """Format retrieved chunks into a single context string for the LLM.

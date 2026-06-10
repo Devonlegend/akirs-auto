@@ -47,21 +47,29 @@ whatever the source:
 
 1. Embed the question and retrieve the `top_k` (default 10) most similar chunks
    by cosine similarity.
-2. Format them into a ~2000-token context budget (`retrieval/retriever.py`).
-3. Build the prompt (`rag/prompt_builder.py`). The system prompt **forces
-   grounding**: answer only from context, say *"I don't have enough information
-   in the provided context to answer that."* when the answer is absent, use no
-   outside knowledge, and flag conflicting sources.
-4. Generate with Phi-4-mini via Ollama and return `answer`, `sources`
+2. **Filter by relevance.** Chunks scoring below `CHATBOT_RELEVANCE_THRESHOLD`
+   (default `0.3`, where `score = 1 − cosine_distance`) are dropped. This keeps
+   off-topic queries (greetings, small talk) from being answered against weakly
+   matched junk context.
+3. Format the survivors into a ~2000-token context budget (`retrieval/retriever.py`).
+4. Build the prompt (`rag/prompt_builder.py`):
+   - **If relevant context survived** — the system prompt **forces grounding**:
+     answer only from context, decline when the answer is absent, use no outside
+     knowledge, and flag conflicting sources.
+   - **If nothing survived** (no match, or all below threshold) — fall back to a
+     general conversational prompt so greetings and simple questions get a normal
+     answer instead of a refusal. These replies carry no sources.
+5. Generate with Phi-4-mini via Ollama and return `answer`, `sources`
    (doc_id + excerpt + relevance score + metadata), `retrieved_count`, and
-   `elapsed_ms`. Relevance `score = 1 − cosine_distance`; citations are deduped
-   by `doc_id:chunk_index`.
+   `elapsed_ms`. Citations are deduped by `doc_id:chunk_index`.
 
 ## Prerequisites
 
-1. **Ollama** running with the Phi-4-mini model:
+1. **Ollama** installed (https://ollama.com/download). On launch, both the CLI and
+   the backend **auto-start the Ollama server, pull `phi4-mini` if missing, and warm
+   the model** — so a manual `ollama pull` is optional:
    ```bash
-   ollama pull phi4-mini
+   ollama pull phi4-mini   # optional; the app will pull on first run
    ```
 2. Install dependencies:
    ```bash
@@ -167,6 +175,7 @@ All settings are environment variables prefixed with `CHATBOT_` (or in `.env`):
 | `CHATBOT_CHUNK_SIZE` | `512` | Target chunk size (tokens) |
 | `CHATBOT_CHUNK_OVERLAP` | `64` | Chunk overlap (tokens) |
 | `CHATBOT_TOP_K` | `10` | Chunks retrieved per query |
+| `CHATBOT_RELEVANCE_THRESHOLD` | `0.3` | Min chunk score (`1 − cosine_distance`) to count as relevant; below this the bot answers conversationally |
 | `CHATBOT_LLM_TEMPERATURE` | `0.3` | Generation temperature |
 
 ## Package layout
@@ -195,9 +204,14 @@ chatbot/
 - **One pipeline for everything.** Raw text, uploaded files, and scraper records
   all flow through the same `Ingestor`. The connector is just a translator from
   relational rows to text blobs.
-- **Grounded by construction.** The system prompt restricts the model to the
-  retrieved context and instructs it to decline when the answer isn't present, so
-  answers stay traceable to their sources.
+- **Grounded by construction.** When relevant context is retrieved, the system
+  prompt restricts the model to it and instructs it to decline when the answer
+  isn't present, so answers stay traceable to their sources. Queries that match
+  nothing above the relevance threshold fall through to a general conversational
+  reply (no sources), so greetings and simple questions aren't met with a refusal.
+- **Self-starting LLM.** On launch the CLI/backend ensure Ollama is running, pull
+  `phi4-mini` if absent, and warm it — and retry transient Ollama transport errors
+  with backoff.
 - **Auto re-index.** After Phase 2 recon completes, the Celery `finalize_recon`
   task calls `run_scraper_ingest` to refresh the `akirs_businesses` collection,
   keeping the vector store in sync with new findings.
@@ -205,5 +219,11 @@ chatbot/
 ## Tests
 
 ```bash
-uv run --extra dev --extra chatbot pytest tests/test_chatbot_nlp.py tests/test_chatbot_connector.py -v
+uv run --extra dev --extra chatbot pytest \
+  tests/test_chatbot_nlp.py tests/test_chatbot_connector.py \
+  tests/test_chatbot_pipeline.py tests/test_chatbot_ollama.py \
+  tests/test_chatbot_retriever.py -v
 ```
+
+These run fully offline — the pipeline, Ollama backend, and retriever tests use
+in-process fakes / mocked HTTP, so no Ollama server or network is required.
