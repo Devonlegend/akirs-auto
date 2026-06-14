@@ -77,7 +77,7 @@ class FacebookAdsLibraryPage:
             await self.page.wait_for_timeout(2000)
             
             error_msg = self.page.locator("text=/something went wrong/i").first
-            if await error_msg.count() > 0:
+            if await error_msg.is_visible():
                 logger.warning(f"Encountered 'Something went wrong' on load. Hard navigating (attempt {attempt + 1}/4)...")
                 await self.page.wait_for_timeout(3000)
                 await self.page.goto(self.settings.fb_ads_base_url)
@@ -134,33 +134,21 @@ class FacebookAdsLibraryPage:
             logger.warning(f"select_ad_category({category}) failed (continuing): {e}")
 
     async def search_keyword(self, keyword: str) -> None:
+        from urllib.parse import quote
+        encoded_keyword = quote(keyword)
+        search_url = f"{self.settings.fb_ads_base_url}&q={encoded_keyword}&search_type=keyword_unordered"
+        
         for attempt in range(3):
             try:
-                search_box = self.page.get_by_placeholder(re.compile("search|keyword", re.I)).first
-                if await search_box.count() == 0:
-                     search_box = self.page.locator("input[type='text']").last
-                
-                await search_box.click()
-                await self.page.wait_for_timeout(300)
-                await search_box.press("Control+A")
-                await search_box.press("Backspace")
-                await self.page.wait_for_timeout(200)
-                
-                # Human typing simulation
-                await search_box.press_sequentially(keyword, delay=120)
-                await self.page.wait_for_timeout(500)
-                await search_box.press("Enter")
-                
+                logger.info(f"Navigating directly to search URL: {search_url}")
+                await self.page.goto(search_url)
                 await self.page.wait_for_load_state("networkidle", timeout=15000)
                 await self.page.wait_for_timeout(3000)
                 
                 # Check if it errored out after searching
                 error_msg = self.page.locator("text=/something went wrong/i").first
-                if await error_msg.count() > 0:
-                    logger.warning(f"Search errored for '{keyword}'. Hard resetting page (attempt {attempt+1}/3)...")
-                    await self.navigate()
-                    await self.select_country(self.settings.fb_ads_country)
-                    await self.select_ad_category("All ads")
+                if await error_msg.is_visible():
+                    logger.warning(f"Search errored for '{keyword}'. Retrying (attempt {attempt+1}/3)...")
                     continue
                 else:
                     break
@@ -254,10 +242,15 @@ async def _get_advertiser_info(page: Page) -> dict:
         if await dialog.count() == 0:
             return info
 
-        advertiser_link = dialog.locator("a[href*='facebook.com'], a[href*='instagram.com']").first
-        if await advertiser_link.count() > 0:
-            info["name"] = (await advertiser_link.inner_text()).strip() or None
-            info["url"] = await advertiser_link.get_attribute("href")
+        anchors = await dialog.locator("a").all()
+        for a in anchors:
+            href = await a.get_attribute("href")
+            if href and (("facebook.com" in href) or ("instagram.com" in href) or href.startswith("/")):
+                text = (await a.inner_text()).strip()
+                if text:
+                    info["name"] = text
+                    info["url"] = href if not href.startswith("/") else f"https://www.facebook.com{href}"
+                    break
 
         dialog_text = await dialog.inner_text()
         m = re.search(r"Library ID[:\s]+(\d+)", dialog_text)
