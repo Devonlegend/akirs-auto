@@ -4,7 +4,7 @@ function resolveApiBase() {
   return "http://127.0.0.1:8000";
 }
 
-const API_BASE = resolveApiBase();
+const APP_API_BASE = resolveApiBase();
 const defaultConfig = {
   country: "Nigeria",
   state: "Akwa Ibom",
@@ -112,13 +112,18 @@ const profiles = [
 
 const activityLog = [
   ["12:18:44", "Browser", "Success", "Hidden browser launched with residential proxy pool."],
-  ["12:19:03", "Search", "Running", `Query: ${mockDefaults.query} near ${mockDefaults.city}, ${mockDefaults.state} with contact links.`],
+  ["12:19:03", "Search", "Running", `Query: ${defaultConfig.query} near ${defaultConfig.city}, ${defaultConfig.state} with contact links.`],
   ["12:19:41", "Lead", "Success", "Collected Ibom Fresh Foods with website and email."],
   ["12:20:08", "Queue", "Warning", "18 leads require duplicate checks."],
   ["12:20:55", "Outreach", "Success", "Contact list prepared for tax revenue follow-up."],
 ];
 
 const app = document.querySelector("#app");
+
+function signOut() {
+  window.localStorage.removeItem("akirs.user");
+  window.location.reload();
+}
 const drawerRoot = document.querySelector("#drawer-root");
 const authRoot = document.querySelector("#auth-root");
 
@@ -220,7 +225,7 @@ function addActivity(type, status, message) {
 }
 
 async function apiFetch(path, options = {}) {
-  const response = await fetch(`${API_BASE}${path}`, {
+  const response = await fetch(`${APP_API_BASE}${path}`, {
     headers: { "Content-Type": "application/json", ...(options.headers || {}) },
     ...options,
   });
@@ -413,7 +418,7 @@ function render() {
     results: renderResults,
     review: renderReview,
     taxable: renderTaxable,
-    assistant: renderAssistant,
+    assistant: () => '<div class="panel">Assistant coming soon</div>',
     analytics: renderAnalytics,
     settings: renderSettings,
   };
@@ -626,7 +631,7 @@ function quickAction(title, body, iconName, href) {
 
 function renderScraper() {
   const job = state.currentJob;
-  const keywords = defaultConfig.keywords.split(",")[0].trim();
+  const keywords = defaultConfig.query ? defaultConfig.query.split(",")[0].trim() : "";
 
   return `
     <section class="page">
@@ -653,7 +658,7 @@ function renderScraper() {
               ${staticField("Target State", defaultConfig.state)}
               ${inputField("City", defaultConfig.city, "city")}
             </div>
-            ${inputField("Keywords", defaultConfig.keywords, "keywords")}
+            ${inputField("Keywords", defaultConfig.query || "", "keywords")}
             <label class="range-field">
               <span class="range-field__top">
                 <span class="label">Thread Count</span>
