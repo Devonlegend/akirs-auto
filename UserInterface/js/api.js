@@ -54,4 +54,9 @@ async function pollJobStatus(jobId) {
   return request(`/jobs/${jobId}`);
 }
 
-window.akirsApi = { API_BASE, fetchAdvertisers, sendChat, ingestFromScraper, startScrapeJob, pollJobStatus };
+// POST /jobs/{job_id}/stop -> stop a running job
+async function stopScrapeJob(jobId) {
+  return request(`/jobs/${jobId}/stop`, { method: "POST" });
+}
+
+window.akirsApi = { API_BASE, fetchAdvertisers, sendChat, ingestFromScraper, startScrapeJob, pollJobStatus, stopScrapeJob };

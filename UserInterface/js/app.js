@@ -201,6 +201,29 @@ async function startScraping() {
   }
 }
 
+async function stopScraping() {
+  if (!state.currentJob || ["completed", "failed"].includes(state.currentJob.status)) {
+    showToast("No active job to stop");
+    return;
+  }
+  if (!window.confirm("Stop the active scraper job?")) return;
+
+  const btn = document.querySelector("#stop-scraping");
+  if (btn) btn.disabled = true;
+
+  try {
+    const liveStatus = await window.akirsApi.stopScrapeJob(state.currentJob.job_id);
+    state.currentJob = liveStatus;
+    if (state.pollIntervalId) clearInterval(state.pollIntervalId);
+    addActivity("Scraper", "Failed", "Job manually stopped by user");
+    render();
+  } catch (err) {
+    showToast(`Failed to stop: ${err.message}`);
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
 function icon(name) {
   return `<span class="material-symbols-outlined">${name}</span>`;
 }
@@ -641,7 +664,7 @@ function renderScraper() {
         `<button id="start-scraping" class="button button--primary" type="button">${icon("play_arrow")} Start Scraping</button>
          <button class="button" type="button" data-toast="Job paused">${icon("pause")} Pause</button>
          <button class="button" type="button" data-toast="Job resumed">${icon("resume")} Resume</button>
-         <button class="button button--danger" type="button" data-confirm="Stop the active scraper job?">${icon("stop")} Stop</button>`,
+         <button id="stop-scraping" class="button button--danger" type="button">${icon("stop")} Stop</button>`,
       )}
 
       <div class="dashboard-grid">
@@ -1183,6 +1206,7 @@ function bindPageEvents(route) {
   }
 
   document.querySelector("#start-scraping")?.addEventListener("click", startScraping);
+  document.querySelector("#stop-scraping")?.addEventListener("click", stopScraping);
   document.querySelector("#sign-out")?.addEventListener("click", signOut);
 
   if (route === "results") {
