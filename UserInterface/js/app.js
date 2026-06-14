@@ -12,103 +12,7 @@ const defaultConfig = {
   query: "restaurant",
 };
 
-const profiles = [
-  {
-    name: "Ibom Fresh Foods",
-    owner: "Daniel Akpan",
-    platform: "Facebook",
-    verified: true,
-    followers: 18420,
-    following: 312,
-    engagement: 86,
-    category: "Local Services",
-    industry: "Restaurant",
-    location: "Uyo, Akwa Ibom",
-    website: "ibomfresh.example",
-    contact: "hello@ibomfresh.example",
-    found: "2026-05-30",
-    reviewer: "Ada M.",
-    status: "Pending Review",
-    risk: 82,
-    relevance: 94,
-  },
-  {
-    name: "Eket Beauty Studio",
-    owner: "Maya Udo",
-    platform: "Instagram",
-    verified: true,
-    followers: 64200,
-    following: 980,
-    engagement: 91,
-    category: "Business Owners",
-    industry: "Beauty",
-    location: "Eket, Akwa Ibom",
-    website: "eketbeauty.example",
-    contact: "+234 802 014 8840",
-    found: "2026-05-29",
-    reviewer: "Chris N.",
-    status: "Ready To Contact",
-    risk: 76,
-    relevance: 97,
-  },
-  {
-    name: "Northline Builders",
-    owner: "Marcus Udofia",
-    platform: "LinkedIn",
-    verified: false,
-    followers: 12880,
-    following: 421,
-    engagement: 73,
-    category: "Companies",
-    industry: "Construction",
-    location: "Ikot Ekpene, Akwa Ibom",
-    website: "northlinebuilders.example",
-    contact: "contact form",
-    found: "2026-05-28",
-    reviewer: "Ada M.",
-    status: "Needs More Information",
-    risk: 69,
-    relevance: 89,
-  },
-  {
-    name: "Spark Auto Mechanics",
-    owner: "Elijah Bassey",
-    platform: "TikTok",
-    verified: false,
-    followers: 39210,
-    following: 205,
-    engagement: 88,
-    category: "Entrepreneurs",
-    industry: "Auto Repair",
-    location: "Uyo, Akwa Ibom",
-    website: "",
-    contact: "DM available",
-    found: "2026-05-27",
-    reviewer: "Nora P.",
-    status: "Rejected",
-    risk: 43,
-    relevance: 78,
-  },
-  {
-    name: "Marina Grill House",
-    owner: "Olivia Etim",
-    platform: "X/Twitter",
-    verified: true,
-    followers: 23100,
-    following: 744,
-    engagement: 80,
-    category: "Business Pages",
-    industry: "Restaurant",
-    location: "Oron, Akwa Ibom",
-    website: "marinagrill.example",
-    contact: "bookings@marinagrill.example",
-    found: "2026-05-26",
-    reviewer: "Chris N.",
-    status: "Ready To Contact",
-    risk: 71,
-    relevance: 92,
-  },
-];
+const profiles = [];
 
 const activityLog = [
   ["12:18:44", "Browser", "Success", "Hidden browser launched with residential proxy pool."],
@@ -126,6 +30,9 @@ function signOut() {
 }
 const drawerRoot = document.querySelector("#drawer-root");
 const authRoot = document.querySelector("#auth-root");
+
+let dataState = "loading";
+let dataError = null;
 
 let state = {
   profiles: profiles || [],
@@ -403,8 +310,8 @@ async function loadData() {
   render();
   try {
     const raw = await window.akirsApi.fetchAdvertisers();
-    profiles = raw.map(mapAdvertiser);
-    dataState = profiles.length ? "ready" : "empty";
+    state.profiles = raw.map(mapAdvertiser);
+    dataState = state.profiles.length ? "ready" : "empty";
   } catch (error) {
     dataError = error.message;
     dataState = "error";
