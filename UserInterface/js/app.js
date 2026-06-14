@@ -122,6 +122,80 @@ const app = document.querySelector("#app");
 const drawerRoot = document.querySelector("#drawer-root");
 const authRoot = document.querySelector("#auth-root");
 
+let state = {
+  profiles: profiles || [],
+  activityLog: activityLog || [],
+  taxable: [],
+  currentJob: null,
+  user: readStoredUser(),
+  pollIntervalId: null,
+};
+
+async function startScraping() {
+  const btn = document.querySelector("#start-scraping");
+  if (btn) btn.disabled = true;
+
+  try {
+    const configForm = document.querySelector("#scraper-config");
+    const formData = new FormData(configForm);
+
+    const country = formData.get("country") || "Nigeria";
+    const city = formData.get("city");
+    const keywords = formData.get("keywords");
+
+    const payload = {
+      country: country,
+      locations: city ? [city] : [],
+      user_keywords: keywords ? [keywords] : [],
+      run_recon: true,
+      target_ads_per_keyword: 20
+    };
+
+    addActivity("Scraper", "Started", "Triggered job via backend Celery worker");
+    
+    // Call our newly added startScrapeJob function in api.js
+    const jobResponse = await window.akirsApi.startScrapeJob(payload);
+    state.currentJob = {
+      job_id: jobResponse.job_id,
+      status: jobResponse.status,
+      celery_task_id: jobResponse.celery_task_id,
+      advertiser_count: 0,
+      ad_count: 0,
+      keyword_run_count: 0
+    };
+
+    render(); // Update UI immediately
+
+    // Start polling the backend status endpoint
+    if (state.pollIntervalId) clearInterval(state.pollIntervalId);
+    state.pollIntervalId = setInterval(async () => {
+      try {
+        const liveStatus = await window.akirsApi.pollJobStatus(state.currentJob.job_id);
+        state.currentJob = liveStatus;
+        
+        if (liveStatus.status === "completed" || liveStatus.status === "failed") {
+          clearInterval(state.pollIntervalId);
+          addActivity("Scraper", liveStatus.status === "failed" ? "Failed" : "Success", 
+            liveStatus.error || "Scraping and recon completed successfully");
+          // Refresh the profiles from the backend if it succeeds
+          if (liveStatus.status === "completed") {
+            loadData();
+          }
+        }
+        render(); // Re-render the KPI metrics grid
+      } catch (pollErr) {
+        console.error("Failed to poll status:", pollErr);
+      }
+    }, 2000);
+
+  } catch (err) {
+    console.error(err);
+    addActivity("Scraper", "Error", err.message);
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
 function icon(name) {
   return `<span class="material-symbols-outlined">${name}</span>`;
 }

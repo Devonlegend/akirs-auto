@@ -41,4 +41,17 @@ async function ingestFromScraper(collection = "akirs_businesses") {
   });
 }
 
-window.akirsApi = { API_BASE, fetchAdvertisers, sendChat, ingestFromScraper };
+// POST /jobs/scrape -> trigger the background Celery worker
+async function startScrapeJob(payload) {
+  return request("/jobs/scrape", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+// GET /jobs/{job_id} -> get job status and live counts
+async function pollJobStatus(jobId) {
+  return request(`/jobs/${jobId}`);
+}
+
+window.akirsApi = { API_BASE, fetchAdvertisers, sendChat, ingestFromScraper, startScrapeJob, pollJobStatus };
