@@ -5,6 +5,6 @@ to extract a clean structured profile and judge taxability, and persists the
 taxable ones to the ``taxable_entities`` table.
 """
 
-from taxation.schemas import TaxAssessment
+from .schemas import TaxAssessment
 
 __all__ = ["TaxAssessment"]

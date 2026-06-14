@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.database import get_db
 from src.db.models import TaxableEntity
-from taxation.processor import run_tax_classification
+from src.taxation.processor import run_tax_classification
 
 logger = logging.getLogger(__name__)
 

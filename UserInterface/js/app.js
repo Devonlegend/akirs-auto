@@ -5,103 +5,17 @@ const mockDefaults = {
   query: "restaurant",
 };
 
-const profiles = [
-  {
-    name: "Ibom Fresh Foods",
-    owner: "Daniel Akpan",
-    platform: "Facebook",
-    verified: true,
-    followers: 18420,
-    following: 312,
-    engagement: 86,
-    category: "Local Services",
-    industry: "Restaurant",
-    location: "Uyo, Akwa Ibom",
-    website: "ibomfresh.example",
-    contact: "hello@ibomfresh.example",
-    found: "2026-05-30",
-    reviewer: "Ada M.",
-    status: "Pending Review",
-    risk: 82,
-    relevance: 94,
-  },
-  {
-    name: "Eket Beauty Studio",
-    owner: "Maya Udo",
-    platform: "Instagram",
-    verified: true,
-    followers: 64200,
-    following: 980,
-    engagement: 91,
-    category: "Business Owners",
-    industry: "Beauty",
-    location: "Eket, Akwa Ibom",
-    website: "eketbeauty.example",
-    contact: "+234 802 014 8840",
-    found: "2026-05-29",
-    reviewer: "Chris N.",
-    status: "Ready To Contact",
-    risk: 76,
-    relevance: 97,
-  },
-  {
-    name: "Northline Builders",
-    owner: "Marcus Udofia",
-    platform: "LinkedIn",
-    verified: false,
-    followers: 12880,
-    following: 421,
-    engagement: 73,
-    category: "Companies",
-    industry: "Construction",
-    location: "Ikot Ekpene, Akwa Ibom",
-    website: "northlinebuilders.example",
-    contact: "contact form",
-    found: "2026-05-28",
-    reviewer: "Ada M.",
-    status: "Needs More Information",
-    risk: 69,
-    relevance: 89,
-  },
-  {
-    name: "Spark Auto Mechanics",
-    owner: "Elijah Bassey",
-    platform: "TikTok",
-    verified: false,
-    followers: 39210,
-    following: 205,
-    engagement: 88,
-    category: "Entrepreneurs",
-    industry: "Auto Repair",
-    location: "Uyo, Akwa Ibom",
-    website: "",
-    contact: "DM available",
-    found: "2026-05-27",
-    reviewer: "Nora P.",
-    status: "Rejected",
-    risk: 43,
-    relevance: 78,
-  },
-  {
-    name: "Marina Grill House",
-    owner: "Olivia Etim",
-    platform: "X/Twitter",
-    verified: true,
-    followers: 23100,
-    following: 744,
-    engagement: 80,
-    category: "Business Pages",
-    industry: "Restaurant",
-    location: "Oron, Akwa Ibom",
-    website: "marinagrill.example",
-    contact: "bookings@marinagrill.example",
-    found: "2026-05-26",
-    reviewer: "Chris N.",
-    status: "Ready To Contact",
-    risk: 71,
-    relevance: 92,
-  },
-];
+// Live scraped advertisers, loaded from the backend. Shape is produced by
+// mapAdvertiser() so the existing render helpers keep working.
+let profiles = [];
+let dataState = "loading"; // loading | ready | empty | error
+let dataError = null;
+
+// Chat state (shared by the floating widget and the dedicated assistant page).
+let chatHistory = [];
+let chatLoading = false;
+let chatOpen = false;
+
 
 const activityLog = [
   ["12:18:44", "Browser", "Success", "Hidden browser launched with residential proxy pool."],
@@ -122,6 +36,82 @@ function number(value) {
   return value.toLocaleString();
 }
 
+function escapeHtml(value) {
+  return String(value ?? "").replace(/[&<>"']/g, (c) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;",
+  })[c]);
+}
+
+function capitalize(value) {
+  return value ? value.charAt(0).toUpperCase() + value.slice(1) : value;
+}
+
+// Adapt an enriched advertiser from the API to the shape the render helpers expect.
+function mapAdvertiser(a) {
+  const socialLinks = a.social_links || [];
+  const platforms = (a.platforms || []).map(capitalize);
+  const website = (socialLinks.find((l) => !/facebook\.com/i.test(l.url)) || {}).url || "";
+  const email = (a.emails || [])[0];
+  const phone = (a.phones || [])[0];
+  return {
+    id: a.id,
+    name: a.name || a.fb_url,
+    owner: "—",
+    platform: platforms[0] || "Facebook",
+    platforms,
+    verified: false,
+    followers: a.followers ?? 0,
+    following: 0,
+    engagement: 0,
+    category: "—",
+    industry: "—",
+    location: (a.addresses || [])[0] || "—",
+    website,
+    fbUrl: a.fb_url,
+    socialLinks,
+    emails: a.emails || [],
+    phones: a.phones || [],
+    addresses: a.addresses || [],
+    sources: a.sources || [],
+    contact: email || phone || "Not found",
+    found: (a.first_seen || "").slice(0, 10),
+    reviewer: "—",
+    status: "Pending Review",
+    risk: 0,
+    relevance: 0,
+  };
+}
+
+async function loadData() {
+  dataState = "loading";
+  dataError = null;
+  render();
+  try {
+    const raw = await window.akirsApi.fetchAdvertisers();
+    profiles = raw.map(mapAdvertiser);
+    dataState = profiles.length ? "ready" : "empty";
+  } catch (error) {
+    dataError = error.message;
+    dataState = "error";
+  }
+  render();
+}
+
+function dataBanner() {
+  if (dataState === "loading")
+    return `<div class="data-banner">${icon("hourglass_top")} Loading scraped data…</div>`;
+  if (dataState === "empty")
+    return `<div class="data-banner">${icon("inbox")} No scraped advertisers yet. Run the scraper to populate this view.</div>`;
+  if (dataState === "error")
+    return `<div class="data-banner data-banner--error">${icon("error")} Couldn't reach the API at ${escapeHtml(window.akirsApi.API_BASE)} — is the backend running? <small>${escapeHtml(dataError || "")}</small></div>`;
+  return "";
+}
+
+
 function getRoute() {
   return window.location.hash.replace("#/", "") || "dashboard";
 }
@@ -140,12 +130,16 @@ function render() {
     results: renderResults,
     review: renderReview,
     taxable: renderTaxable,
+    assistant: renderAssistant,
     analytics: renderAnalytics,
     settings: renderSettings,
   };
 
-  setActiveNav(pages[route] ? route : "dashboard");
-  app.innerHTML = (pages[route] || renderDashboard)();
+  const activeRoute = pages[route] ? route : "dashboard";
+  setActiveNav(activeRoute);
+  const dataRoutes = ["dashboard", "results", "review", "taxable", "analytics"];
+  const banner = dataRoutes.includes(activeRoute) ? dataBanner() : "";
+  app.innerHTML = banner + (pages[route] || renderDashboard)();
   app.focus({ preventScroll: true });
   bindPageEvents(route);
 }
@@ -337,36 +331,30 @@ function renderResults() {
 }
 
 function profileCard(profile) {
+  const website = profile.website || profile.fbUrl || "";
   return `
-    <article class="profile-card" data-profile="${profile.name.toLowerCase()} ${profile.platform.toLowerCase()} ${profile.location.toLowerCase()}">
+    <article class="profile-card" data-profile="${escapeHtml(`${profile.name} ${profile.platform} ${profile.location} ${profile.contact}`.toLowerCase())}">
       <div class="profile-card__header">
         <div>
-          <h2>${profile.name}</h2>
+          <h2>${escapeHtml(profile.name)}</h2>
           <div class="tag-row">
-            <span class="badge">${profile.platform}</span>
-            ${profile.verified ? `<span class="badge badge--success">${icon("verified")} Verified</span>` : `<span class="badge">Unverified</span>`}
+            ${(profile.platforms.length ? profile.platforms : [profile.platform]).map((p) => `<span class="badge">${escapeHtml(p)}</span>`).join(" ")}
           </div>
         </div>
-        <span class="score-ring">${profile.relevance}%</span>
-      </div>
-      <div class="profile-card__stats">
-        <span><strong>${number(profile.followers)}</strong><small>Followers</small></span>
-        <span><strong>${number(profile.following)}</strong><small>Following</small></span>
-        <span><strong>${profile.engagement}</strong><small>Engagement</small></span>
+        <span class="score-ring">${number(profile.followers)}</span>
       </div>
       <dl class="detail-list">
-        <div><dt>Category</dt><dd>${profile.category}</dd></div>
-        <div><dt>Location</dt><dd>${profile.location}</dd></div>
-        <div><dt>Website</dt><dd>${profile.website || "Not found"}</dd></div>
-        <div><dt>Contact</dt><dd>${profile.contact}</dd></div>
+        <div><dt>Location</dt><dd>${escapeHtml(profile.location)}</dd></div>
+        <div><dt>Email</dt><dd>${escapeHtml(profile.emails[0] || "Not found")}</dd></div>
+        <div><dt>Phone</dt><dd>${escapeHtml(profile.phones[0] || "Not found")}</dd></div>
+        <div><dt>Sources</dt><dd>${profile.sources.length ? escapeHtml(profile.sources.join(", ")) : "—"}</dd></div>
       </dl>
       <div class="link-stack">
-        <a href="#">Business URL</a>
-        <a href="#">${profile.website || "Website unavailable"}</a>
-        <a href="#">Additional Links</a>
+        <a href="${escapeHtml(profile.fbUrl || "#")}" target="_blank" rel="noopener">Facebook page</a>
+        ${website && website !== profile.fbUrl ? `<a href="${escapeHtml(website)}" target="_blank" rel="noopener">${escapeHtml(website)}</a>` : ""}
       </div>
       <div class="card-actions">
-        ${businessActions(profile.name)}
+        ${businessActions(profile)}
       </div>
     </article>
   `;
@@ -488,18 +476,18 @@ function toggleRow(label, checked) {
   return `<label class="schedule-card"><span>${label}</span><input type="checkbox" ${checked ? "checked" : ""} /></label>`;
 }
 
-function businessActions(name) {
+function businessActions(profile) {
   return `
-    <button class="button" type="button" data-open-drawer="${name}">${icon("visibility")} View Contact</button>
+    <button class="button" type="button" data-open-drawer="${profile.id}">${icon("visibility")} View Contact</button>
     <button class="button button--primary" type="button" data-toast="Tax payment outreach prepared">${icon("contact_mail")} Prepare Outreach</button>
     <button class="button" type="button" data-toast="Business marked as contacted">${icon("call")} Mark Contacted</button>
     <button class="button" type="button" data-toast="Follow-up added">${icon("event_repeat")} Follow Up</button>
   `;
 }
 
-function businessTableActions(name) {
+function businessTableActions(profile) {
   return `
-    <button class="icon-button" type="button" data-open-drawer="${name}" aria-label="View contact" title="View contact">${icon("visibility")}</button>
+    <button class="icon-button" type="button" data-open-drawer="${profile.id}" aria-label="View contact" title="View contact">${icon("visibility")}</button>
     <button class="icon-button icon-button--primary" type="button" data-toast="Tax payment outreach prepared" aria-label="Prepare outreach" title="Prepare outreach">${icon("contact_mail")}</button>
     <button class="icon-button" type="button" data-toast="Business marked as contacted" aria-label="Mark contacted" title="Mark contacted">${icon("call")}</button>
     <button class="icon-button" type="button" data-toast="Follow-up added" aria-label="Follow up" title="Follow up">${icon("event_repeat")}</button>
@@ -574,20 +562,20 @@ function resultsTable(rows) {
     <div class="table-wrap">
       <table class="lead-table">
         <thead>
-          <tr><th>Business</th><th>Platform</th><th>Location</th><th>Contact Info</th><th>Relevance</th><th>Status</th><th>Actions</th></tr>
+          <tr><th>Business</th><th>Platforms</th><th>Location</th><th>Contact</th><th>Sources</th><th>First Seen</th><th>Actions</th></tr>
         </thead>
         <tbody>
           ${rows
             .map(
               (profile) => `
-                <tr data-profile="${profile.name.toLowerCase()} ${profile.platform.toLowerCase()} ${profile.location.toLowerCase()} ${profile.contact.toLowerCase()}">
-                  <td><strong>${profile.name}</strong><small>${profile.owner} · ${profile.industry}</small></td>
-                  <td><span class="badge">${profile.platform}</span></td>
-                  <td>${profile.location}</td>
-                  <td><strong>${profile.contact}</strong><small>${profile.website || "Website not found"}</small></td>
-                  <td><strong>${profile.relevance}%</strong></td>
-                  <td><span class="status-pill ${statusClass(profile.status)}">${profile.status}</span></td>
-                  <td><div class="table-actions">${businessTableActions(profile.name)}</div></td>
+                <tr data-profile="${escapeHtml(`${profile.name} ${profile.platform} ${profile.location} ${profile.contact}`.toLowerCase())}">
+                  <td><strong>${escapeHtml(profile.name)}</strong><small>${escapeHtml(profile.fbUrl || "")}</small></td>
+                  <td>${(profile.platforms.length ? profile.platforms : [profile.platform]).map((p) => `<span class="badge">${escapeHtml(p)}</span>`).join(" ")}</td>
+                  <td>${escapeHtml(profile.location)}</td>
+                  <td><strong>${escapeHtml(profile.contact)}</strong>${profile.emails[0] && profile.phones[0] ? `<small>${escapeHtml(profile.phones[0])}</small>` : ""}</td>
+                  <td>${profile.sources.length ? profile.sources.map((s) => `<span class="badge">${escapeHtml(s)}</span>`).join(" ") : "—"}</td>
+                  <td>${escapeHtml(profile.found)}</td>
+                  <td><div class="table-actions">${businessTableActions(profile)}</div></td>
                 </tr>
               `,
             )
@@ -617,7 +605,7 @@ function reviewTable() {
                   <td>${profile.found}</td>
                   <td>${profile.reviewer}</td>
                   <td><select><option>${profile.status}</option><option>Pending Review</option><option>Ready To Contact</option><option>Rejected</option><option>Needs More Information</option></select></td>
-                  <td><button class="button" type="button" data-open-drawer="${profile.name}">${icon("notes")} Comments</button></td>
+                  <td><button class="button" type="button" data-open-drawer="${profile.id}">${icon("notes")} Comments</button></td>
                 </tr>
               `,
             )
@@ -648,7 +636,7 @@ function taxableTable(rows) {
                   <td>${profile.found}</td>
                   <td><strong>${profile.risk}</strong></td>
                   <td><span class="status-pill is-approved">Ready To Contact</span></td>
-                  <td><div class="table-actions">${businessTableActions(profile.name)}</div></td>
+                  <td><div class="table-actions">${businessTableActions(profile)}</div></td>
                 </tr>
               `,
             )
@@ -678,30 +666,35 @@ function statusClass(status) {
   return "is-running";
 }
 
-function renderDrawer(name) {
-  const profile = profiles.find((item) => item.name === name) || profiles[0];
+function renderDrawer(id) {
+  const profile = profiles.find((item) => String(item.id) === String(id)) || profiles[0];
+  if (!profile) return;
+  const links = (profile.socialLinks || [])
+    .map((l) => `<a href="${escapeHtml(l.url)}" target="_blank" rel="noopener">${escapeHtml(capitalize(l.platform))}: ${escapeHtml(l.url.slice(0, 48))}…</a>`)
+    .join("");
   drawerRoot.innerHTML = `
     <div class="drawer-backdrop" data-close-drawer></div>
     <aside class="drawer" role="dialog" aria-modal="true" aria-label="Business details">
       <div class="panel__header">
         <div>
-          <h2>${profile.name}</h2>
-          <span class="eyebrow">${profile.platform} business detail</span>
+          <h2>${escapeHtml(profile.name)}</h2>
+          <span class="eyebrow">${escapeHtml(profile.platform)} business detail</span>
         </div>
         <button class="icon-button" type="button" data-close-drawer aria-label="Close details">${icon("close")}</button>
       </div>
       <div class="drawer__body">
         <section class="stat-card">
-          <h2>${profile.owner}</h2>
-          <p class="muted">${profile.industry} business in ${profile.location}</p>
+          <p class="muted">${escapeHtml(profile.location)}</p>
           <div class="stats-grid compact-grid">
             ${metric("Followers", number(profile.followers), "group")}
-            ${metric("Risk Score", profile.risk, "priority_high")}
+            ${metric("Sources", profile.sources.length, "travel_explore")}
           </div>
         </section>
         <section class="form-stack">
-          ${evidenceCard("language", "Website", profile.website || "No website discovered", "")}
-          ${evidenceCard("contact_mail", "Contact", profile.contact, "")}
+          ${evidenceCard("mail", "Emails", profile.emails.length ? escapeHtml(profile.emails.join(", ")) : "No email discovered", "")}
+          ${evidenceCard("call", "Phones", profile.phones.length ? escapeHtml(profile.phones.join(", ")) : "No phone discovered", "")}
+          ${evidenceCard("location_on", "Addresses", profile.addresses.length ? escapeHtml(profile.addresses.join(" • ")) : "No address discovered", "")}
+          ${evidenceCard("link", "Social Links", links || "No links found", "")}
           ${evidenceCard("payments", "Tax Payment Outreach", "Prepare a clear message about tax revenue payment obligations and next steps.", "is-muted")}
         </section>
       </div>
@@ -732,6 +725,124 @@ function showToast(message) {
   toast.textContent = message;
   document.body.append(toast);
   window.setTimeout(() => toast.remove(), 2600);
+}
+
+/* ---------------------------------------------------------------- Chatbot */
+
+function renderAssistant() {
+  return `
+    <section class="page assistant-page">
+      ${pageHeader(
+        "AI Assistant",
+        "Chat with the RAG assistant over your scraped business data.",
+        `<button class="button" type="button" id="chat-sync">${icon("sync")} Sync knowledge base</button>`,
+      )}
+      <div class="panel chat-page">
+        <div class="chat-page__messages" data-chat-messages></div>
+        <form class="chat-input" id="chat-form-page">
+          <input type="text" placeholder="Ask about a business, contact, or location..." autocomplete="off" />
+          <button class="button button--primary" type="submit">${icon("send")} Send</button>
+        </form>
+      </div>
+    </section>
+  `;
+}
+
+function chatMessageHtml(msg) {
+  if (msg.role === "user") {
+    return `<div class="chat-msg is-user"><div class="chat-msg__bubble">${escapeHtml(msg.text)}</div></div>`;
+  }
+  const sources =
+    msg.sources && msg.sources.length
+      ? `<details class="chat-sources">
+           <summary>${msg.sources.length} source${msg.sources.length > 1 ? "s" : ""}</summary>
+           ${msg.sources
+             .map(
+               (s) => `<div class="chat-source"><span class="chat-source__score">${Math.round((s.score || 0) * 100)}%</span><p>${escapeHtml(s.excerpt || "")}</p></div>`,
+             )
+             .join("")}
+         </details>`
+      : "";
+  return `<div class="chat-msg is-bot${msg.error ? " is-error" : ""}"><div class="chat-msg__bubble">${escapeHtml(msg.text)}</div>${sources}</div>`;
+}
+
+function chatListHtml() {
+  const empty = `<div class="chat-empty">${icon("smart_toy")}<p>Ask about scraped businesses, contacts, or locations.</p></div>`;
+  const typing = chatLoading
+    ? `<div class="chat-msg is-bot"><div class="chat-msg__bubble chat-typing"><span></span><span></span><span></span></div></div>`
+    : "";
+  return (chatHistory.length ? chatHistory.map(chatMessageHtml).join("") : empty) + typing;
+}
+
+function refreshChatViews() {
+  document.querySelectorAll("[data-chat-messages]").forEach((el) => {
+    el.innerHTML = chatListHtml();
+    el.scrollTop = el.scrollHeight;
+  });
+}
+
+async function submitChat(text) {
+  const question = (text || "").trim();
+  if (!question || chatLoading) return;
+  chatHistory.push({ role: "user", text: question });
+  chatLoading = true;
+  refreshChatViews();
+  try {
+    const res = await window.akirsApi.sendChat(question);
+    chatHistory.push({ role: "bot", text: res.answer || "(no answer returned)", sources: res.sources || [] });
+  } catch (error) {
+    chatHistory.push({
+      role: "bot",
+      text: `Sorry — ${error.message}. Make sure the backend and Ollama are running, and that the knowledge base has been synced.`,
+      error: true,
+    });
+  } finally {
+    chatLoading = false;
+    refreshChatViews();
+  }
+}
+
+function bindChatForm(form) {
+  if (!form) return;
+  form.onsubmit = (event) => {
+    event.preventDefault();
+    const input = form.querySelector("input");
+    submitChat(input.value);
+    input.value = "";
+  };
+}
+
+function renderChatWidget() {
+  const root = document.querySelector("#chat-widget");
+  if (!root) return;
+  root.innerHTML = `
+    <button id="chat-fab" class="chat-fab" type="button" aria-label="Open AI assistant">${icon("forum")}</button>
+    <section id="chat-panel" class="chat-panel" aria-label="AI assistant" ${chatOpen ? "" : "hidden"}>
+      <header class="chat-panel__header">
+        <strong>${icon("smart_toy")} AKIRS Assistant</strong>
+        <button class="icon-button" type="button" id="chat-close" aria-label="Close assistant">${icon("close")}</button>
+      </header>
+      <div class="chat-panel__messages" data-chat-messages></div>
+      <form class="chat-input" id="chat-form-widget">
+        <input type="text" placeholder="Ask about a business..." autocomplete="off" />
+        <button class="button button--primary" type="submit" aria-label="Send">${icon("send")}</button>
+      </form>
+    </section>
+  `;
+
+  const panel = root.querySelector("#chat-panel");
+  const setOpen = (open) => {
+    chatOpen = open;
+    panel.hidden = !open;
+    if (open) {
+      refreshChatViews();
+      panel.querySelector("input")?.focus();
+    }
+  };
+  root.querySelector("#chat-fab").onclick = () => setOpen(panel.hidden);
+  root.querySelector("#chat-close").onclick = () => setOpen(false);
+  bindChatForm(root.querySelector("#chat-form-widget"));
+  refreshChatViews();
 }
 
 function bindPageEvents(route) {
@@ -788,6 +899,26 @@ function bindPageEvents(route) {
       bindPageEvents("results");
     };
   }
+
+  if (route === "assistant") {
+    bindChatForm(document.querySelector("#chat-form-page"));
+    refreshChatViews();
+    const syncBtn = document.querySelector("#chat-sync");
+    if (syncBtn) {
+      syncBtn.onclick = async () => {
+        syncBtn.disabled = true;
+        showToast("Syncing knowledge base…");
+        try {
+          const r = await window.akirsApi.ingestFromScraper();
+          showToast(`Synced ${r.advertisers_processed} businesses (${r.chunks_created} chunks)`);
+        } catch (error) {
+          showToast(`Sync failed: ${error.message}`);
+        } finally {
+          syncBtn.disabled = false;
+        }
+      };
+    }
+  }
 }
 
 drawerRoot.addEventListener("click", (event) => {
@@ -837,6 +968,8 @@ window.addEventListener("hashchange", render);
 
 if (!window.location.hash) {
   window.location.hash = "#/dashboard";
-} else {
-  render();
 }
+
+render();
+renderChatWidget();
+loadData();
