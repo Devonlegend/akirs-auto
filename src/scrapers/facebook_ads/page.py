@@ -238,7 +238,7 @@ async def _fingerprint_card(button: Locator, index: int) -> str:
 async def _get_advertiser_info(page: Page) -> dict:
     info: dict = {"name": None, "url": None, "fb_ad_id": None}
     try:
-        dialog = page.locator("div[role='dialog']").first
+        dialog = page.locator("div[role='dialog']").filter(has_text=re.compile(r"Library ID", re.I)).first
         if await dialog.count() == 0:
             return info
 
@@ -264,7 +264,7 @@ async def _get_advertiser_info(page: Page) -> dict:
 async def _extract_social_links_from_dialog(page: Page) -> list[dict]:
     links: list[dict] = []
     try:
-        dialog = page.locator("div[role='dialog']").first
+        dialog = page.locator("div[role='dialog']").filter(has_text=re.compile(r"Library ID", re.I)).first
         if await dialog.count() == 0:
             return links
 

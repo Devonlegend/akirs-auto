@@ -2,8 +2,6 @@ import logging
 import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
-<<<<<<< HEAD
-
 # The `src/` package is laid out so its modules import each other as top-level
 # packages (e.g. `from taxation.agent import ...`, matching pyproject's
 # `pythonpath = ["src"]`). Running uvicorn only puts the repo root on sys.path,
@@ -14,21 +12,13 @@ if str(_SRC) not in sys.path:
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-
-from backend.database import Base, engine
-from backend.routers import scraped, taxation
-from chatbot.api.routes import prepare_pipeline, shutdown_pipeline
-=======
-
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from backend.database import AsyncSessionLocal, Base, engine
 from backend.models import users  # noqa: F401 - register auth tables with SQLAlchemy metadata
 from backend.routers import auth, scraped, taxation
 from backend.services.auth_queries import seed_default_users
->>>>>>> b7d8735 (implemtations)
+from chatbot.api.routes import prepare_pipeline, shutdown_pipeline
 from chatbot.api.routes import router as chatbot_router
 from api.routes import advertisers as api_advertisers
 from api.routes import geography as api_geography
@@ -59,11 +49,8 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Akirs Auto Backend", lifespan=lifespan)
 
-<<<<<<< HEAD
 # Frontend is served from a separate static host during development, so allow
 # cross-origin requests. Tighten allow_origins to the real static host later.
-=======
->>>>>>> b7d8735 (implemtations)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
