@@ -1,21 +1,114 @@
-const mockDefaults = {
+function resolveApiBase() {
+  if (window.AKIRS_API_BASE) return window.AKIRS_API_BASE;
+  if (window.location.pathname.startsWith("/ui")) return "";
+  return "http://127.0.0.1:8000";
+}
+
+const API_BASE = resolveApiBase();
+const defaultConfig = {
   country: "Nigeria",
-  state: "Akwaibom",
+  state: "Akwa Ibom",
   city: "Uyo",
   query: "restaurant",
 };
 
-// Live scraped advertisers, loaded from the backend. Shape is produced by
-// mapAdvertiser() so the existing render helpers keep working.
-let profiles = [];
-let dataState = "loading"; // loading | ready | empty | error
-let dataError = null;
-
-// Chat state (shared by the floating widget and the dedicated assistant page).
-let chatHistory = [];
-let chatLoading = false;
-let chatOpen = false;
-
+const profiles = [
+  {
+    name: "Ibom Fresh Foods",
+    owner: "Daniel Akpan",
+    platform: "Facebook",
+    verified: true,
+    followers: 18420,
+    following: 312,
+    engagement: 86,
+    category: "Local Services",
+    industry: "Restaurant",
+    location: "Uyo, Akwa Ibom",
+    website: "ibomfresh.example",
+    contact: "hello@ibomfresh.example",
+    found: "2026-05-30",
+    reviewer: "Ada M.",
+    status: "Pending Review",
+    risk: 82,
+    relevance: 94,
+  },
+  {
+    name: "Eket Beauty Studio",
+    owner: "Maya Udo",
+    platform: "Instagram",
+    verified: true,
+    followers: 64200,
+    following: 980,
+    engagement: 91,
+    category: "Business Owners",
+    industry: "Beauty",
+    location: "Eket, Akwa Ibom",
+    website: "eketbeauty.example",
+    contact: "+234 802 014 8840",
+    found: "2026-05-29",
+    reviewer: "Chris N.",
+    status: "Ready To Contact",
+    risk: 76,
+    relevance: 97,
+  },
+  {
+    name: "Northline Builders",
+    owner: "Marcus Udofia",
+    platform: "LinkedIn",
+    verified: false,
+    followers: 12880,
+    following: 421,
+    engagement: 73,
+    category: "Companies",
+    industry: "Construction",
+    location: "Ikot Ekpene, Akwa Ibom",
+    website: "northlinebuilders.example",
+    contact: "contact form",
+    found: "2026-05-28",
+    reviewer: "Ada M.",
+    status: "Needs More Information",
+    risk: 69,
+    relevance: 89,
+  },
+  {
+    name: "Spark Auto Mechanics",
+    owner: "Elijah Bassey",
+    platform: "TikTok",
+    verified: false,
+    followers: 39210,
+    following: 205,
+    engagement: 88,
+    category: "Entrepreneurs",
+    industry: "Auto Repair",
+    location: "Uyo, Akwa Ibom",
+    website: "",
+    contact: "DM available",
+    found: "2026-05-27",
+    reviewer: "Nora P.",
+    status: "Rejected",
+    risk: 43,
+    relevance: 78,
+  },
+  {
+    name: "Marina Grill House",
+    owner: "Olivia Etim",
+    platform: "X/Twitter",
+    verified: true,
+    followers: 23100,
+    following: 744,
+    engagement: 80,
+    category: "Business Pages",
+    industry: "Restaurant",
+    location: "Oron, Akwa Ibom",
+    website: "marinagrill.example",
+    contact: "bookings@marinagrill.example",
+    found: "2026-05-26",
+    reviewer: "Chris N.",
+    status: "Ready To Contact",
+    risk: 71,
+    relevance: 92,
+  },
+];
 
 const activityLog = [
   ["12:18:44", "Browser", "Success", "Hidden browser launched with residential proxy pool."],
@@ -27,13 +120,129 @@ const activityLog = [
 
 const app = document.querySelector("#app");
 const drawerRoot = document.querySelector("#drawer-root");
+const authRoot = document.querySelector("#auth-root");
 
 function icon(name) {
   return `<span class="material-symbols-outlined">${name}</span>`;
 }
 
 function number(value) {
-  return value.toLocaleString();
+  return Number(value || 0).toLocaleString();
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function addActivity(type, status, message) {
+  const time = new Date().toLocaleTimeString([], { hour12: false });
+  state.activityLog = [[time, type, status, message], ...state.activityLog].slice(0, 20);
+  render();
+}
+
+async function apiFetch(path, options = {}) {
+  const response = await fetch(`${API_BASE}${path}`, {
+    headers: { "Content-Type": "application/json", ...(options.headers || {}) },
+    ...options,
+  });
+
+  if (!response.ok) {
+    const detail = await response.text();
+    throw new Error(detail || `${response.status} ${response.statusText}`);
+  }
+
+  return response.status === 204 ? null : response.json();
+}
+
+function readStoredUser() {
+  try {
+    return JSON.parse(window.localStorage.getItem("akirs.user") || "null");
+  } catch {
+    return null;
+  }
+}
+
+function initials(value) {
+  return String(value || "--")
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join("") || "--";
+}
+
+function mapAdvertiser(advertiser) {
+  const socialLinks = advertiser.social_links || [];
+  const website = socialLinks.find((link) => /^https?:\/\/(?!.*facebook\.com)/i.test(link.url))?.url || "";
+  const contact = socialLinks[0]?.url || advertiser.fb_url || "Not discovered";
+
+  return {
+    id: advertiser.id,
+    name: advertiser.name || `Advertiser ${advertiser.id}`,
+    owner: "Not assessed",
+    platform: "Social",
+    verified: false,
+    followers: 0,
+    following: 0,
+    engagement: 0,
+    category: "Advertiser",
+    industry: "Unknown",
+    location: defaultConfig.state,
+    website,
+    contact,
+    found: formatDate(advertiser.first_seen),
+    reviewer: "Unassigned",
+    status: "Pending Review",
+    risk: 0,
+    relevance: socialLinks.length ? 80 : 60,
+    businessUrl: advertiser.fb_url,
+    socialLinks,
+  };
+}
+
+function mapTaxableEntity(entity) {
+  return {
+    id: entity.advertiser_id,
+    name: entity.legal_name || `Advertiser ${entity.advertiser_id}`,
+    owner: entity.entity_type || "Unknown",
+    platform: "Social",
+    verified: true,
+    followers: 0,
+    following: 0,
+    engagement: 0,
+    category: "Taxable Entity",
+    industry: entity.entity_type || "Business",
+    location: entity.address || defaultConfig.state,
+    website: "",
+    contact: [entity.emails, entity.phones].filter(Boolean).join(" / ") || "Not discovered",
+    found: "Recently assessed",
+    reviewer: "Tax classifier",
+    status: "Ready To Contact",
+    risk: Math.round((entity.taxable_score || 0) * 100),
+    relevance: Math.round((entity.taxable_score || 0) * 100),
+    reasoning: entity.reasoning || "",
+  };
+}
+
+function formatDate(value) {
+  if (!value) return "Not recorded";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "Not recorded" : date.toISOString().slice(0, 10);
+}
+
+function emptyState(title, body) {
+  return `
+    <div class="empty-state">
+      ${icon("database")}
+      <strong>${escapeHtml(title)}</strong>
+      <p class="muted">${escapeHtml(body)}</p>
+    </div>
+  `;
 }
 
 function escapeHtml(value) {
@@ -141,7 +350,121 @@ function render() {
   const banner = dataRoutes.includes(activeRoute) ? dataBanner() : "";
   app.innerHTML = banner + (pages[route] || renderDashboard)();
   app.focus({ preventScroll: true });
+  renderAuthPanel();
+  updateAuthChrome();
+  renderAuthOverlay();
   bindPageEvents(route);
+}
+
+function updateAuthChrome() {
+  const user = state.user;
+  const displayName = user?.display_name || "Not signed in";
+  const username = user?.username ? `${user.username}@akirs.local` : "Login required";
+  const avatar = initials(displayName);
+
+  const profileAvatar = document.querySelector("#profile-avatar");
+  if (profileAvatar) profileAvatar.textContent = avatar;
+  const panelAvatar = document.querySelector("#panel-avatar");
+  if (panelAvatar) panelAvatar.textContent = avatar;
+  const profileName = document.querySelector("#profile-name");
+  if (profileName) profileName.textContent = displayName;
+  const panelName = document.querySelector("#panel-name");
+  if (panelName) panelName.textContent = displayName;
+  const panelUsername = document.querySelector("#panel-username");
+  if (panelUsername) panelUsername.textContent = username;
+  document.body.classList.toggle("is-auth-locked", !user);
+}
+
+function renderAuthPanel() {
+  const panel = document.querySelector("#auth-panel");
+  if (!panel) return;
+
+  if (state.user) {
+    const displayName = state.user.display_name || "Not signed in";
+    const username = state.user.username ? `${state.user.username}@akirs.local` : "Login required";
+    const avatar = initials(displayName);
+
+    panel.innerHTML = `
+      <div class="auth-panel__header">
+        <span id="panel-avatar" class="profile-button__avatar">${avatar}</span>
+        <div>
+          <strong id="panel-name">${escapeHtml(displayName)}</strong>
+          <small id="panel-username">${escapeHtml(username)}</small>
+        </div>
+      </div>
+      <button class="button button--block" type="button">
+        <span class="material-symbols-outlined">manage_accounts</span>
+        Profile
+      </button>
+      <button id="sign-out" class="button button--block" type="button">
+        <span class="material-symbols-outlined">logout</span>
+        Sign Out
+      </button>
+    `;
+
+    panel.querySelector("#sign-out")?.addEventListener("click", signOut);
+  } else {
+    panel.innerHTML = `
+      <form id="panel-login-form" class="login-card" style="max-width:320px; padding:12px;">
+        <div style="display:flex; align-items:center; gap:12px;">
+          <div class="login-card__mark">${icon("lock")}</div>
+          <div>
+            <strong>Sign in</strong>
+            <p class="muted">Sign in to continue.</p>
+          </div>
+        </div>
+        <label style="margin-top:8px;">
+           <span class="label">Username</span>
+           <input name="username" type="text" autocomplete="username" required />
+        </label>
+          <label>
+           <span class="label">Password</span>
+           <input name="password" type="password" autocomplete="current-password" required />
+        </label>
+        <button class="button button--primary button--block" type="submit">${icon("login")} Sign In</button>
+        <p class="muted" style="margin:8px 0 0; text-align:center;"><a href="#" id="open-full-login">Open full sign-in</a></p>
+      </form>
+    `;
+
+    panel.querySelector("#panel-login-form")?.addEventListener("submit", login);
+    panel.querySelector("#open-full-login")?.addEventListener("click", (e) => {
+      e.preventDefault();
+      renderAuthOverlay();
+      document.querySelector('#login-form input[name="username"]')?.focus();
+    });
+  }
+}
+
+function renderAuthOverlay(message = "") {
+  if (!authRoot) return;
+  if (state.user) {
+    authRoot.innerHTML = "";
+    return;
+  }
+
+  authRoot.innerHTML = `
+    <div class="auth-gate" role="dialog" aria-modal="true" aria-label="Sign in">
+      <form id="login-form" class="login-card">
+        <div class="login-card__mark">${icon("lock")}</div>
+        <div>
+          <h1>AKIRS Scraper</h1>
+          <p class="muted">Sign in to continue.</p>
+        </div>
+        <label>
+           <span class="label">Username</span>
+           <input name="username" type="text" autocomplete="username" required />
+        </label>
+        <label>
+           <span class="label">Password</span>
+           <input name="password" type="password" autocomplete="current-password" required />
+        </label>
+        ${message ? `<p class="form-error">${escapeHtml(message)}</p>` : ""}
+        <button class="button button--primary button--block" type="submit">${icon("login")} Sign In</button>
+      </form>
+    </div>
+  `;
+
+  authRoot.querySelector("#login-form")?.addEventListener("submit", login);
 }
 
 function pageHeader(title, subtitle, actions = "") {
@@ -170,6 +493,10 @@ function metric(label, value, iconName, trend = "", modifier = "") {
 }
 
 function renderDashboard() {
+  const profiles = state.profiles;
+  const readyCount = state.taxable.length;
+  const activeJobs = state.currentJob && ["queued", "running"].includes(state.currentJob.status) ? 1 : 0;
+
   return `
     <section class="page">
       ${pageHeader(
@@ -180,10 +507,10 @@ function renderDashboard() {
       )}
 
       <div class="stats-grid">
-        ${metric("Leads Collected", number(14209), "group", "+12.4% today")}
-        ${metric("Businesses Identified", number(4816), "storefront", "34 categories")}
-        ${metric("Outreach Ready", "68%", "fact_check", "1,284 pending contact checks")}
-        ${metric("Active Jobs", "3", "settings_remote", "8 browser threads", "is-highlighted")}
+        ${metric("Leads Collected", number(profiles.length), "group", state.isLoading ? "Loading backend data" : "From scraper database")}
+        ${metric("Businesses Identified", number(profiles.length), "storefront", "Scraped advertisers")}
+        ${metric("Outreach Ready", number(readyCount), "fact_check", "Taxable entities")}
+        ${metric("Active Jobs", number(activeJobs), "settings_remote", state.currentJob?.status || "No active job", "is-highlighted")}
       </div>
 
       <div class="dashboard-grid">
@@ -192,7 +519,7 @@ function renderDashboard() {
             <h2>${icon("history")} Recent Discoveries</h2>
             <a class="button" href="#/results">Open Results</a>
           </div>
-          ${profileTable(profiles.slice(0, 4), false)}
+          ${profiles.length ? profileTable(profiles.slice(0, 4), false) : emptyState("No scraper results yet", "Start a scrape job to collect advertisers from the backend.")}
         </section>
         <section class="panel span-4">
           <div class="panel__header"><h2>${icon("bolt")} Quick Actions</h2></div>
@@ -224,12 +551,15 @@ function quickAction(title, body, iconName, href) {
 }
 
 function renderScraper() {
+  const job = state.currentJob;
+  const keywords = defaultConfig.keywords.split(",")[0].trim();
+
   return `
     <section class="page">
       ${pageHeader(
         "Scraper Control Center",
         "Configure platform searches, launch jobs, and monitor the hidden browser worker.",
-        `<button class="button button--primary" type="button" data-toast="Scraping job started">${icon("play_arrow")} Start Scraping</button>
+        `<button id="start-scraping" class="button button--primary" type="button">${icon("play_arrow")} Start Scraping</button>
          <button class="button" type="button" data-toast="Job paused">${icon("pause")} Pause</button>
          <button class="button" type="button" data-toast="Job resumed">${icon("resume")} Resume</button>
          <button class="button button--danger" type="button" data-confirm="Stop the active scraper job?">${icon("stop")} Stop</button>`,
@@ -241,15 +571,15 @@ function renderScraper() {
                 <span>8</span>
                 <span>12</span>
           <div class="panel__header"><h2>${icon("tune")} Scraper Configuration</h2></div>
-          <form class="config-form">
-            ${selectField("Platform", ["Facebook", "Instagram", "LinkedIn", "X/Twitter", "TikTok", "Other"])}
-            ${selectField("Search Type", ["Business Owners", "Business Pages", "Companies", "Entrepreneurs", "Local Services"])}
+          <form id="scraper-config" class="config-form">
+            ${selectField("Platform", ["Facebook", "Instagram", "LinkedIn", "X/Twitter", "TikTok", "Other"], "platform")}
+            ${selectField("Search Type", ["Business Owners", "Business Pages", "Companies", "Entrepreneurs", "Local Services"], "search_type")}
             <div class="form-grid">
-              ${staticField("Target Country", mockDefaults.country)}
-              ${staticField("Target State", mockDefaults.state)}
-              ${inputField("City", mockDefaults.city)}
+              ${inputField("Target Country", defaultConfig.country, "country")}
+              ${staticField("Target State", defaultConfig.state)}
+              ${inputField("City", defaultConfig.city, "city")}
             </div>
-            ${inputField("Keywords", "restaurant, mechanic, salon, retail")}
+            ${inputField("Keywords", defaultConfig.keywords, "keywords")}
             <label class="range-field">
               <span class="range-field__top">
                 <span class="label">Thread Count</span>
@@ -268,14 +598,14 @@ function renderScraper() {
 
         <section class="span-7">
           <div class="kpi-grid">
-            ${metric("Browser Status", "Running", "desktop_windows", "Headless Chromium")}
-            ${metric("Current Query", mockDefaults.query, "search", `${mockDefaults.city}, ${mockDefaults.state}`)}
-            ${metric("Leads Found", "1,842", "group_add", "+248 last hour")}
-            ${metric("Pages Scanned", "6,920", "travel_explore", "82/min")}
-            ${metric("Success Rate", "94.6%", "check_circle", "Healthy")}
-            ${metric("Runtime", "02:18:44", "timer", "Started today")}
-            ${metric("Queue Size", "318", "queue", "62 high priority")}
-            ${metric("Active Threads", "8", "memory", "Autoscaled")}
+            ${metric("Browser Status", job?.status || "Idle", "desktop_windows", job?.celery_task_id ? "Celery worker queued" : "Ready")}
+            ${metric("Current Query", keywords || "Not set", "search", `${defaultConfig.city}, ${defaultConfig.state}`)}
+            ${metric("Leads Found", number(job?.advertiser_count || state.profiles.length), "group_add", "Advertisers saved")}
+            ${metric("Ads Found", number(job?.ad_count || 0), "travel_explore", "From active job")}
+            ${metric("Keyword Runs", number(job?.keyword_run_count || 0), "check_circle", "Expanded scraper keywords")}
+            ${metric("Job ID", job?.job_id || "-", "tag", job?.created_at ? formatDate(job.created_at) : "No job queued")}
+            ${metric("Job Status", job?.status || "Idle", "queue", job?.error || "No backend errors")}
+            ${metric("Active Threads", "1", "memory", "Celery worker")}
           </div>
         </section>
 
@@ -288,20 +618,20 @@ function renderScraper() {
   `;
 }
 
-function selectField(label, options) {
+function selectField(label, options, name = "") {
   return `
     <label>
       <span class="label">${label}</span>
-      <select>${options.map((option) => `<option>${option}</option>`).join("")}</select>
+      <select ${name ? `name="${name}"` : ""}>${options.map((option) => `<option>${option}</option>`).join("")}</select>
     </label>
   `;
 }
 
-function inputField(label, value) {
+function inputField(label, value, name = "") {
   return `
     <label>
       <span class="label">${label}</span>
-      <input type="text" value="${value}" />
+      <input type="text" value="${escapeHtml(value)}" ${name ? `name="${name}"` : ""} />
     </label>
   `;
 }
@@ -316,6 +646,8 @@ function staticField(label, value) {
 }
 
 function renderResults() {
+  const profiles = state.profiles;
+
   return `
     <section class="page">
       ${pageHeader(
@@ -325,7 +657,7 @@ function renderResults() {
          <button class="button button--primary" type="button" data-view="table">${icon("table_rows")} Table</button>`,
       )}
       ${filterBar(["Platform", "Follower Count", "Category", "Location", "Verification Status", "Date Found"], "Search all collected leads...")}
-      <div id="results-view" class="panel">${resultsTable(profiles)}</div>
+      <div id="results-view" class="panel">${profiles.length ? resultsTable(profiles) : emptyState("No backend results", "Scraped advertisers will appear here after a scrape completes.")}</div>
     </section>
   `;
 }
@@ -361,6 +693,8 @@ function profileCard(profile) {
 }
 
 function renderReview() {
+  const profiles = state.profiles;
+
   return `
     <section class="page">
       ${pageHeader(
@@ -371,9 +705,9 @@ function renderReview() {
       )}
       ${filterBar(["Status", "Platform", "Reviewer", "Category", "Location"], "Search review queue...")}
       <div class="panel">
-        ${reviewTable()}
+        ${profiles.length ? reviewTable(profiles) : emptyState("Nothing to review", "Collected advertisers will move into this queue after scraping.")}
         <div class="panel__footer">
-          <span class="label">Showing 1-5 of 1,284 records. Virtualized table handoff ready for backend paging.</span>
+          <span class="label">Showing ${number(profiles.length)} records from the backend.</span>
           ${pagination()}
         </div>
       </div>
@@ -382,7 +716,7 @@ function renderReview() {
 }
 
 function renderTaxable() {
-  const approved = profiles.filter((profile) => profile.status === "Ready To Contact");
+  const approved = state.taxable;
   return `
     <section class="page">
       ${pageHeader(
@@ -393,13 +727,13 @@ function renderTaxable() {
          <button class="button" type="button" data-toast="Follow-up reminders created">${icon("event_repeat")} Schedule Follow-up</button>`,
       )}
       <div class="stats-grid">
-        ${metric("Contacts Ready", number(approved.length * 618), "contact_mail")}
-        ${metric("Payment Outreach Due", number(approved.length * 482), "request_quote")}
-        ${metric("High Priority Calls", "147", "priority_high", "Risk score above 80", "is-highlighted")}
-        ${metric("Recently Contacted", "38", "verified", "Last 24 hours")}
+        ${metric("Contacts Ready", number(approved.length), "contact_mail")}
+        ${metric("Payment Outreach Due", number(approved.length), "request_quote")}
+        ${metric("High Priority Calls", number(approved.filter((profile) => profile.risk >= 80).length), "priority_high", "Risk score above 80", "is-highlighted")}
+        ${metric("Recently Contacted", "0", "verified", "No outreach backend yet")}
       </div>
       <div class="panel">
-        ${taxableTable(approved)}
+        ${approved.length ? taxableTable(approved) : emptyState("No taxable entities yet", "Run tax classification after scraping to populate this list.")}
         <div class="panel__footer"><span class="label">Verified businesses with usable contact details</span>${pagination()}</div>
       </div>
     </section>
@@ -407,39 +741,47 @@ function renderTaxable() {
 }
 
 function renderAnalytics() {
+  const profiles = state.profiles;
+  const readyCount = state.taxable.length;
+  const pendingCount = Math.max(profiles.length - readyCount, 0);
+
   return `
     <section class="page">
       ${pageHeader("Analytics Dashboard", "Performance and distribution metrics for collected leads and reviewers.")}
       <div class="stats-grid">
-        ${metric("Total Leads Collected", number(14209), "group")}
-        ${metric("Businesses Identified", number(4816), "storefront")}
-        ${metric("Outreach Ready Businesses", number(1236), "verified")}
-        ${metric("Rejected Businesses", number(408), "block")}
+        ${metric("Total Leads Collected", number(profiles.length), "group")}
+        ${metric("Businesses Identified", number(profiles.length), "storefront")}
+        ${metric("Outreach Ready Businesses", number(readyCount), "verified")}
+        ${metric("Pending Review", number(pendingCount), "pending")}
       </div>
       <div class="dashboard-grid">
-        ${chartPanel("Businesses By Industry", [["Beauty", 88], ["Construction", 64], ["Restaurant", 72], ["Local Services", 94]])}
-        ${chartPanel("Platform Distribution", [["Facebook", 82], ["Instagram", 76], ["LinkedIn", 58], ["TikTok", 46]])}
-        ${chartPanel("Contact Readiness", [["Mon", 54], ["Tue", 68], ["Wed", 74], ["Thu", 61], ["Fri", 79]])}
-        ${chartPanel("Reviewer Performance", [["Ada", 92], ["Chris", 86], ["Nora", 74], ["Sam", 68]])}
+        ${chartPanel("Businesses By Industry", [["Advertisers", profiles.length ? 100 : 0], ["Taxable", readyCount ? Math.round((readyCount / Math.max(profiles.length, 1)) * 100) : 0]])}
+        ${chartPanel("Platform Distribution", [["Selected Source", profiles.length ? 100 : 0], ["Other Sources", 0]])}
+        ${chartPanel("Contact Readiness", [["Ready", readyCount], ["Pending", pendingCount]])}
+        ${chartPanel("Job Progress", [["Ads", state.currentJob?.ad_count || 0], ["Keywords", state.currentJob?.keyword_run_count || 0]])}
       </div>
     </section>
   `;
 }
 
 function chartPanel(title, rows) {
+  const max = Math.max(...rows.map(([, value]) => Number(value) || 0), 100);
   return `
     <section class="panel span-6">
       <div class="panel__header"><h2>${icon("bar_chart")} ${title}</h2></div>
       <div class="chart-list">
         ${rows
           .map(
-            ([label, value]) => `
+            ([label, value]) => {
+              const width = Math.min(100, Math.round(((Number(value) || 0) / max) * 100));
+              return `
               <div class="chart-row">
-                <span>${label}</span>
-                <div class="progress"><span style="width:${value}%"></span></div>
-                <strong>${value}%</strong>
+                <span>${escapeHtml(label)}</span>
+                <div class="progress"><span style="width:${width}%"></span></div>
+                <strong>${number(value)}</strong>
               </div>
-            `,
+            `;
+            },
           )
           .join("")}
       </div>
@@ -515,10 +857,10 @@ function activityTable() {
       <table class="activity-table">
         <thead><tr><th>Timestamp</th><th>Event Type</th><th>Status</th><th>Message</th></tr></thead>
         <tbody>
-          ${activityLog
+          ${state.activityLog
             .map(
               ([time, type, status, message]) => `
-                <tr><td>${time}</td><td>${type}</td><td><span class="status-pill is-${status.toLowerCase()}">${status}</span></td><td>${message}</td></tr>
+                <tr><td>${escapeHtml(time)}</td><td>${escapeHtml(type)}</td><td><span class="status-pill is-${status.toLowerCase()}">${escapeHtml(status)}</span></td><td>${escapeHtml(message)}</td></tr>
               `,
             )
             .join("")}
@@ -586,13 +928,13 @@ function resultsTable(rows) {
   `;
 }
 
-function reviewTable() {
+function reviewTable(rows) {
   return `
     <div class="table-wrap">
       <table>
         <thead><tr><th><input type="checkbox" /></th><th>Name</th><th>Platform</th><th>Category</th><th>Location</th><th>Followers</th><th>Discovery Date</th><th>Reviewer</th><th>Status</th><th>Notes</th></tr></thead>
         <tbody>
-          ${profiles
+          ${rows
             .map(
               (profile) => `
                 <tr>
@@ -666,12 +1008,8 @@ function statusClass(status) {
   return "is-running";
 }
 
-function renderDrawer(id) {
-  const profile = profiles.find((item) => String(item.id) === String(id)) || profiles[0];
-  if (!profile) return;
-  const links = (profile.socialLinks || [])
-    .map((l) => `<a href="${escapeHtml(l.url)}" target="_blank" rel="noopener">${escapeHtml(capitalize(l.platform))}: ${escapeHtml(l.url.slice(0, 48))}…</a>`)
-    .join("");
+function renderDrawer(name) {
+  const profile = profiles.find((item) => item.name === name) || profiles[0];
   drawerRoot.innerHTML = `
     <div class="drawer-backdrop" data-close-drawer></div>
     <aside class="drawer" role="dialog" aria-modal="true" aria-label="Business details">
@@ -684,7 +1022,8 @@ function renderDrawer(id) {
       </div>
       <div class="drawer__body">
         <section class="stat-card">
-          <p class="muted">${escapeHtml(profile.location)}</p>
+          <h2>${profile.owner}</h2>
+          <p class="muted">${profile.industry} business in ${profile.location}</p>
           <div class="stats-grid compact-grid">
             ${metric("Followers", number(profile.followers), "group")}
             ${metric("Sources", profile.sources.length, "travel_explore")}
@@ -727,124 +1066,6 @@ function showToast(message) {
   window.setTimeout(() => toast.remove(), 2600);
 }
 
-/* ---------------------------------------------------------------- Chatbot */
-
-function renderAssistant() {
-  return `
-    <section class="page assistant-page">
-      ${pageHeader(
-        "AI Assistant",
-        "Chat with the RAG assistant over your scraped business data.",
-        `<button class="button" type="button" id="chat-sync">${icon("sync")} Sync knowledge base</button>`,
-      )}
-      <div class="panel chat-page">
-        <div class="chat-page__messages" data-chat-messages></div>
-        <form class="chat-input" id="chat-form-page">
-          <input type="text" placeholder="Ask about a business, contact, or location..." autocomplete="off" />
-          <button class="button button--primary" type="submit">${icon("send")} Send</button>
-        </form>
-      </div>
-    </section>
-  `;
-}
-
-function chatMessageHtml(msg) {
-  if (msg.role === "user") {
-    return `<div class="chat-msg is-user"><div class="chat-msg__bubble">${escapeHtml(msg.text)}</div></div>`;
-  }
-  const sources =
-    msg.sources && msg.sources.length
-      ? `<details class="chat-sources">
-           <summary>${msg.sources.length} source${msg.sources.length > 1 ? "s" : ""}</summary>
-           ${msg.sources
-             .map(
-               (s) => `<div class="chat-source"><span class="chat-source__score">${Math.round((s.score || 0) * 100)}%</span><p>${escapeHtml(s.excerpt || "")}</p></div>`,
-             )
-             .join("")}
-         </details>`
-      : "";
-  return `<div class="chat-msg is-bot${msg.error ? " is-error" : ""}"><div class="chat-msg__bubble">${escapeHtml(msg.text)}</div>${sources}</div>`;
-}
-
-function chatListHtml() {
-  const empty = `<div class="chat-empty">${icon("smart_toy")}<p>Ask about scraped businesses, contacts, or locations.</p></div>`;
-  const typing = chatLoading
-    ? `<div class="chat-msg is-bot"><div class="chat-msg__bubble chat-typing"><span></span><span></span><span></span></div></div>`
-    : "";
-  return (chatHistory.length ? chatHistory.map(chatMessageHtml).join("") : empty) + typing;
-}
-
-function refreshChatViews() {
-  document.querySelectorAll("[data-chat-messages]").forEach((el) => {
-    el.innerHTML = chatListHtml();
-    el.scrollTop = el.scrollHeight;
-  });
-}
-
-async function submitChat(text) {
-  const question = (text || "").trim();
-  if (!question || chatLoading) return;
-  chatHistory.push({ role: "user", text: question });
-  chatLoading = true;
-  refreshChatViews();
-  try {
-    const res = await window.akirsApi.sendChat(question);
-    chatHistory.push({ role: "bot", text: res.answer || "(no answer returned)", sources: res.sources || [] });
-  } catch (error) {
-    chatHistory.push({
-      role: "bot",
-      text: `Sorry — ${error.message}. Make sure the backend and Ollama are running, and that the knowledge base has been synced.`,
-      error: true,
-    });
-  } finally {
-    chatLoading = false;
-    refreshChatViews();
-  }
-}
-
-function bindChatForm(form) {
-  if (!form) return;
-  form.onsubmit = (event) => {
-    event.preventDefault();
-    const input = form.querySelector("input");
-    submitChat(input.value);
-    input.value = "";
-  };
-}
-
-function renderChatWidget() {
-  const root = document.querySelector("#chat-widget");
-  if (!root) return;
-  root.innerHTML = `
-    <button id="chat-fab" class="chat-fab" type="button" aria-label="Open AI assistant">${icon("forum")}</button>
-    <section id="chat-panel" class="chat-panel" aria-label="AI assistant" ${chatOpen ? "" : "hidden"}>
-      <header class="chat-panel__header">
-        <strong>${icon("smart_toy")} AKIRS Assistant</strong>
-        <button class="icon-button" type="button" id="chat-close" aria-label="Close assistant">${icon("close")}</button>
-      </header>
-      <div class="chat-panel__messages" data-chat-messages></div>
-      <form class="chat-input" id="chat-form-widget">
-        <input type="text" placeholder="Ask about a business..." autocomplete="off" />
-        <button class="button button--primary" type="submit" aria-label="Send">${icon("send")}</button>
-      </form>
-    </section>
-  `;
-
-  const panel = root.querySelector("#chat-panel");
-  const setOpen = (open) => {
-    chatOpen = open;
-    panel.hidden = !open;
-    if (open) {
-      refreshChatViews();
-      panel.querySelector("input")?.focus();
-    }
-  };
-  root.querySelector("#chat-fab").onclick = () => setOpen(panel.hidden);
-  root.querySelector("#chat-close").onclick = () => setOpen(false);
-  bindChatForm(root.querySelector("#chat-form-widget"));
-  refreshChatViews();
-}
-
 function bindPageEvents(route) {
   drawerRoot.innerHTML = "";
 
@@ -882,18 +1103,21 @@ function bindPageEvents(route) {
     updateThreadCount();
   }
 
+  document.querySelector("#start-scraping")?.addEventListener("click", startScraping);
+  document.querySelector("#sign-out")?.addEventListener("click", signOut);
+
   if (route === "results") {
     const tableButton = document.querySelector("[data-view='table']");
     const cardsButton = document.querySelector("[data-view='cards']");
 
     tableButton.onclick = () => {
-      document.querySelector("#results-view").outerHTML = `<div id="results-view" class="panel">${resultsTable(profiles)}</div>`;
+      document.querySelector("#results-view").outerHTML = `<div id="results-view" class="panel">${state.profiles.length ? resultsTable(state.profiles) : emptyState("No backend results", "Scraped advertisers will appear here after a scrape completes.")}</div>`;
       tableButton.classList.add("button--primary");
       cardsButton.classList.remove("button--primary");
       bindPageEvents("results");
     };
     cardsButton.onclick = () => {
-      document.querySelector("#results-view").outerHTML = `<div id="results-view" class="profile-grid">${profiles.map(profileCard).join("")}</div>`;
+      document.querySelector("#results-view").outerHTML = `<div id="results-view" class="profile-grid">${state.profiles.length ? state.profiles.map(profileCard).join("") : emptyState("No backend results", "Scraped advertisers will appear here after a scrape completes.")}</div>`;
       cardsButton.classList.add("button--primary");
       tableButton.classList.remove("button--primary");
       bindPageEvents("results");
@@ -968,8 +1192,6 @@ window.addEventListener("hashchange", render);
 
 if (!window.location.hash) {
   window.location.hash = "#/dashboard";
+} else {
+  render();
 }
-
-render();
-renderChatWidget();
-loadData();

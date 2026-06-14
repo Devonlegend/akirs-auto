@@ -40,26 +40,26 @@
         </button>
         <div class="auth-menu">
           <button id="auth-toggle" class="profile-button" type="button" aria-label="Open user profile" aria-expanded="false">
-            <span class="profile-button__avatar">AM</span>
+            <span id="profile-avatar" class="profile-button__avatar">--</span>
             <span class="profile-button__text">
-              <strong>Akirs Manager</strong>
-              <small>Revenue officer</small>
+              <strong id="profile-name">Not signed in</strong>
+              <small id="profile-role">Revenue officer</small>
             </span>
             <span class="material-symbols-outlined">expand_more</span>
           </button>
           <section id="auth-panel" class="auth-panel" aria-label="User profile panel" hidden>
             <div class="auth-panel__header">
-              <span class="profile-button__avatar">AM</span>
+              <span id="panel-avatar" class="profile-button__avatar">--</span>
               <div>
-                <strong>Akirs Manager</strong>
-                <small>manager@akirs.gov.ng</small>
+                <strong id="panel-name">Not signed in</strong>
+                <small id="panel-username">Login required</small>
               </div>
             </div>
             <button class="button button--block" type="button">
               <span class="material-symbols-outlined">manage_accounts</span>
               Profile
             </button>
-            <button class="button button--block" type="button">
+            <button id="sign-out" class="button button--block" type="button">
               <span class="material-symbols-outlined">logout</span>
               Sign Out
             </button>
@@ -132,8 +132,12 @@
     <main id="app" class="app-shell" tabindex="-1"></main>
 
     <div id="drawer-root"></div>
+<<<<<<< HEAD
     <div id="chat-widget"></div>
     <script src="js/api.js" defer></script>
+=======
+    <div id="auth-root"></div>
+>>>>>>> b7d8735 (implemtations)
     <script src="js/app.js" defer></script>
   </body>
 </html>

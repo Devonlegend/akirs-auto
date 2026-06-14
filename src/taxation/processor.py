@@ -14,8 +14,8 @@ from src.config.settings import get_settings
 from src.db.base import get_session_factory
 from src.db.models import Advertiser
 from src.db.repositories import TaxableEntityRepository
-from taxation.agent import assess
-from taxation.profile_text import build_profile_text
+from .agent import assess
+from .profile_text import build_profile_text
 
 logger = logging.getLogger(__name__)
 

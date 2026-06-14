@@ -10,7 +10,7 @@ from pydantic_ai.models.openai import OpenAIModel
 from pydantic_ai.providers.openai import OpenAIProvider
 
 from src.config.settings import get_settings
-from taxation.schemas import TaxAssessment
+from .schemas import TaxAssessment
 
 logger = logging.getLogger(__name__)
 

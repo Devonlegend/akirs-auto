@@ -6,7 +6,7 @@ import argparse
 import asyncio
 import logging
 
-from taxation.processor import run_tax_classification
+from .processor import run_tax_classification
 
 
 def main() -> None:
