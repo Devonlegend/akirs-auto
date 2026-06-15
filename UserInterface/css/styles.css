@@ -779,6 +779,7 @@ tbody tr:hover {
 select,
 textarea,
 input[type="text"],
+input[type="email"],
 input[type="password"],
 input[type="search"] {
   color: var(--text);
@@ -788,6 +789,7 @@ input[type="search"] {
 select,
 textarea,
 input[type="text"],
+input[type="email"],
 input[type="password"] {
   background: var(--surface-lowest);
   border: 1px solid var(--outline);
@@ -808,6 +810,7 @@ textarea {
 }
 
 input[type="text"],
+input[type="email"],
 input[type="password"] {
   padding: 10px 12px;
   width: 100%;
