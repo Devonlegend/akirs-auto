@@ -212,12 +212,19 @@ class FacebookAdsLibraryPage:
             if yielded >= target_count:
                 break
 
-            grew = await self._scroll_to_load_more()
+            await self._scroll_to_load_more()
             scroll_count += 1
-            if not grew and new_in_pass == 0:
+            # Terminate on lack of NEW ad cards, not on page-height change. Facebook
+            # lazy-loads spinners/skeletons/footers that grow document height without
+            # adding ads, so height is an unreliable progress signal — keying off it
+            # let the loop reset its empty counter forever and scroll to max_scrolls.
+            if new_in_pass == 0:
                 empty_scrolls += 1
                 if empty_scrolls >= empty_threshold:
-                    logger.info(f"iter_ad_cards: stopping after {empty_scrolls} empty scrolls")
+                    logger.info(
+                        f"iter_ad_cards: no new ads after {empty_scrolls} scrolls "
+                        f"(yielded {yielded}); stopping."
+                    )
                     break
             else:
                 empty_scrolls = 0
