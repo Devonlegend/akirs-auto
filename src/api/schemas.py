@@ -23,6 +23,10 @@ class ScrapeJobRequest(BaseModel):
     keyword_cap: int = Field(default=50, ge=1, le=2000)
     run_recon: bool = Field(default=True)
     country: str | None = Field(default=None, description="FB Ads country filter; defaults to settings value")
+    facebook_user_data_dir: str | None = Field(
+        default=None,
+        description="Persistent Playwright profile used after the manual Facebook login window closes.",
+    )
 
 
 class JobCreatedResponse(BaseModel):

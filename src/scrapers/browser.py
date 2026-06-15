@@ -1,30 +1,40 @@
 """Shared async Playwright browser helpers."""
 
 from contextlib import asynccontextmanager
+from pathlib import Path
 from playwright.async_api import Browser, BrowserContext, Page, async_playwright
 
 
 @asynccontextmanager
-async def launch_browser(headless: bool = True):
+async def launch_browser(headless: bool = True, user_data_dir: str | Path | None = None):
     """Yield (browser, context, page) and clean them up on exit."""
     async with async_playwright() as p:
-        browser: Browser = await p.chromium.launch(
-            headless=headless,
-            args=[
-                "--disable-blink-features=AutomationControlled",
-                "--window-size=1280,800",
-                "--disable-infobars"
-            ]
-        )
-        context: BrowserContext = await browser.new_context(
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            viewport={"width": 1280, "height": 800},
-            java_script_enabled=True,
-            bypass_csp=True,
-            locale="en-US"
-        )
-        page: Page = await context.new_page()
-        
+        browser: Browser | None = None
+        args = [
+            "--disable-blink-features=AutomationControlled",
+            "--window-size=960,720",
+            "--disable-infobars",
+        ]
+        context_options = {
+            "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "viewport": {"width": 960, "height": 720},
+            "java_script_enabled": True,
+            "bypass_csp": True,
+            "locale": "en-US",
+        }
+
+        if user_data_dir:
+            Path(user_data_dir).mkdir(parents=True, exist_ok=True)
+            context: BrowserContext = await p.chromium.launch_persistent_context(
+                str(user_data_dir),
+                headless=headless,
+                args=args,
+                **context_options,
+            )
+        else:
+            browser = await p.chromium.launch(headless=headless, args=args)
+            context = await browser.new_context(**context_options)
+
         # Comprehensive Stealth Injection
         stealth_js = """
         // 1. Pass webdriver
@@ -47,10 +57,12 @@ async def launch_browser(headless: bool = True):
         // 5. Pass languages
         Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
         """
-        await page.add_init_script(stealth_js)
+        await context.add_init_script(stealth_js)
+        page: Page = context.pages[0] if context.pages else await context.new_page()
         
         try:
             yield browser, context, page
         finally:
             await context.close()
-            await browser.close()
+            if browser is not None:
+                await browser.close()

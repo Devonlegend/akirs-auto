@@ -12,11 +12,107 @@ const defaultConfig = {
   query: "restaurant",
 };
 
-const profiles = [];
+const profiles = [
+  {
+    name: "Ibom Fresh Foods",
+    owner: "Daniel Akpan",
+    platform: "Facebook",
+    verified: true,
+    followers: 18420,
+    following: 312,
+    engagement: 86,
+    category: "Local Services",
+    industry: "Restaurant",
+    location: "Uyo, Akwa Ibom",
+    website: "ibomfresh.example",
+    contact: "hello@ibomfresh.example",
+    found: "2026-05-30",
+    reviewer: "Ada M.",
+    status: "Pending Review",
+    risk: 82,
+    relevance: 94,
+  },
+  {
+    name: "Eket Beauty Studio",
+    owner: "Maya Udo",
+    platform: "Instagram",
+    verified: true,
+    followers: 64200,
+    following: 980,
+    engagement: 91,
+    category: "Business Owners",
+    industry: "Beauty",
+    location: "Eket, Akwa Ibom",
+    website: "eketbeauty.example",
+    contact: "+234 802 014 8840",
+    found: "2026-05-29",
+    reviewer: "Chris N.",
+    status: "Ready To Contact",
+    risk: 76,
+    relevance: 97,
+  },
+  {
+    name: "Northline Builders",
+    owner: "Marcus Udofia",
+    platform: "LinkedIn",
+    verified: false,
+    followers: 12880,
+    following: 421,
+    engagement: 73,
+    category: "Companies",
+    industry: "Construction",
+    location: "Ikot Ekpene, Akwa Ibom",
+    website: "northlinebuilders.example",
+    contact: "contact form",
+    found: "2026-05-28",
+    reviewer: "Ada M.",
+    status: "Needs More Information",
+    risk: 69,
+    relevance: 89,
+  },
+  {
+    name: "Spark Auto Mechanics",
+    owner: "Elijah Bassey",
+    platform: "TikTok",
+    verified: false,
+    followers: 39210,
+    following: 205,
+    engagement: 88,
+    category: "Entrepreneurs",
+    industry: "Auto Repair",
+    location: "Uyo, Akwa Ibom",
+    website: "",
+    contact: "DM available",
+    found: "2026-05-27",
+    reviewer: "Nora P.",
+    status: "Rejected",
+    risk: 43,
+    relevance: 78,
+  },
+  {
+    name: "Marina Grill House",
+    owner: "Olivia Etim",
+    platform: "X/Twitter",
+    verified: true,
+    followers: 23100,
+    following: 744,
+    engagement: 80,
+    category: "Business Pages",
+    industry: "Restaurant",
+    location: "Oron, Akwa Ibom",
+    website: "marinagrill.example",
+    contact: "bookings@marinagrill.example",
+    found: "2026-05-26",
+    reviewer: "Chris N.",
+    status: "Ready To Contact",
+    risk: 71,
+    relevance: 92,
+  },
+];
 
 const activityLog = [
   ["12:18:44", "Browser", "Success", "Hidden browser launched with residential proxy pool."],
-  ["12:19:03", "Search", "Running", `Query: ${defaultConfig.query} near ${defaultConfig.city}, ${defaultConfig.state} with contact links.`],
+  ["12:19:03", "Search", "Running", `Query: ${mockDefaults.query} near ${mockDefaults.city}, ${mockDefaults.state} with contact links.`],
   ["12:19:41", "Lead", "Success", "Collected Ibom Fresh Foods with website and email."],
   ["12:20:08", "Queue", "Warning", "18 leads require duplicate checks."],
   ["12:20:55", "Outreach", "Success", "Contact list prepared for tax revenue follow-up."],
@@ -31,106 +127,6 @@ function signOut() {
 const drawerRoot = document.querySelector("#drawer-root");
 const authRoot = document.querySelector("#auth-root");
 
-let dataState = "loading";
-let dataError = null;
-
-let state = {
-  profiles: profiles || [],
-  activityLog: activityLog || [],
-  taxable: [],
-  currentJob: null,
-  user: readStoredUser(),
-  pollIntervalId: null,
-};
-
-async function startScraping() {
-  const btn = document.querySelector("#start-scraping");
-  if (btn) btn.disabled = true;
-
-  try {
-    const configForm = document.querySelector("#scraper-config");
-    const formData = new FormData(configForm);
-
-    const country = formData.get("country") || "Nigeria";
-    const city = formData.get("city");
-    const keywords = formData.get("keywords");
-
-    const payload = {
-      country: country,
-      locations: city ? [city] : [],
-      user_keywords: keywords ? [keywords] : [],
-      run_recon: true,
-      target_ads_per_keyword: 20
-    };
-
-    addActivity("Scraper", "Started", "Triggered job via backend Celery worker");
-    
-    // Call our newly added startScrapeJob function in api.js
-    const jobResponse = await window.akirsApi.startScrapeJob(payload);
-    state.currentJob = {
-      job_id: jobResponse.job_id,
-      status: jobResponse.status,
-      celery_task_id: jobResponse.celery_task_id,
-      advertiser_count: 0,
-      ad_count: 0,
-      keyword_run_count: 0
-    };
-
-    render(); // Update UI immediately
-
-    // Start polling the backend status endpoint
-    if (state.pollIntervalId) clearInterval(state.pollIntervalId);
-    state.pollIntervalId = setInterval(async () => {
-      try {
-        const liveStatus = await window.akirsApi.pollJobStatus(state.currentJob.job_id);
-        state.currentJob = liveStatus;
-        
-        if (liveStatus.status === "completed" || liveStatus.status === "failed") {
-          clearInterval(state.pollIntervalId);
-          addActivity("Scraper", liveStatus.status === "failed" ? "Failed" : "Success", 
-            liveStatus.error || "Scraping and recon completed successfully");
-          // Refresh the profiles from the backend if it succeeds
-          if (liveStatus.status === "completed") {
-            loadData();
-          }
-        }
-        render(); // Re-render the KPI metrics grid
-      } catch (pollErr) {
-        console.error("Failed to poll status:", pollErr);
-      }
-    }, 2000);
-
-  } catch (err) {
-    console.error(err);
-    addActivity("Scraper", "Error", err.message);
-  } finally {
-    if (btn) btn.disabled = false;
-  }
-}
-
-async function stopScraping() {
-  if (!state.currentJob || ["completed", "failed"].includes(state.currentJob.status)) {
-    showToast("No active job to stop");
-    return;
-  }
-  if (!window.confirm("Stop the active scraper job?")) return;
-
-  const btn = document.querySelector("#stop-scraping");
-  if (btn) btn.disabled = true;
-
-  try {
-    const liveStatus = await window.akirsApi.stopScrapeJob(state.currentJob.job_id);
-    state.currentJob = liveStatus;
-    if (state.pollIntervalId) clearInterval(state.pollIntervalId);
-    addActivity("Scraper", "Failed", "Job manually stopped by user");
-    render();
-  } catch (err) {
-    showToast(`Failed to stop: ${err.message}`);
-  } finally {
-    if (btn) btn.disabled = false;
-  }
-}
-
 function icon(name) {
   return `<span class="material-symbols-outlined">${name}</span>`;
 }
@@ -139,19 +135,22 @@ function number(value) {
   return Number(value || 0).toLocaleString();
 }
 
-function escapeHtml(value) {
-  return String(value ?? "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
-}
-
 function addActivity(type, status, message) {
   const time = new Date().toLocaleTimeString([], { hour12: false });
   state.activityLog = [[time, type, status, message], ...state.activityLog].slice(0, 20);
   render();
+}
+
+function activeJobs() {
+  return state.jobs.filter((job) => ["queued", "running", "paused"].includes(job.status));
+}
+
+function isScraperActive(job = state.currentJob) {
+  return Boolean(job && ["queued", "running"].includes(job.status));
+}
+
+function isJobControllable(job = state.currentJob) {
+  return Boolean(job && ["queued", "running", "paused"].includes(job.status));
 }
 
 async function apiFetch(path, options = {}) {
@@ -185,35 +184,6 @@ function initials(value) {
     .join("") || "--";
 }
 
-function mapAdvertiser(advertiser) {
-  const socialLinks = advertiser.social_links || [];
-  const website = socialLinks.find((link) => /^https?:\/\/(?!.*facebook\.com)/i.test(link.url))?.url || "";
-  const contact = socialLinks[0]?.url || advertiser.fb_url || "Not discovered";
-
-  return {
-    id: advertiser.id,
-    name: advertiser.name || `Advertiser ${advertiser.id}`,
-    owner: "Not assessed",
-    platform: "Social",
-    verified: false,
-    followers: 0,
-    following: 0,
-    engagement: 0,
-    category: "Advertiser",
-    industry: "Unknown",
-    location: defaultConfig.state,
-    website,
-    contact,
-    found: formatDate(advertiser.first_seen),
-    reviewer: "Unassigned",
-    status: "Pending Review",
-    risk: 0,
-    relevance: socialLinks.length ? 80 : 60,
-    businessUrl: advertiser.fb_url,
-    socialLinks,
-  };
-}
-
 function mapTaxableEntity(entity) {
   return {
     id: entity.advertiser_id,
@@ -242,6 +212,32 @@ function formatDate(value) {
   if (!value) return "Not recorded";
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? "Not recorded" : date.toISOString().slice(0, 10);
+}
+
+function formatDateTime(value) {
+  if (!value) return "Not recorded";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Not recorded";
+  return date.toLocaleString([], {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function runtimeLabel(job) {
+  if (!job?.started_at) return "00:00";
+  const start = new Date(job.started_at).getTime();
+  const end = job.completed_at ? new Date(job.completed_at).getTime() : Date.now();
+  if (Number.isNaN(start) || Number.isNaN(end) || end < start) return "00:00";
+  const totalSeconds = Math.floor((end - start) / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  return hours
+    ? `${hours}h ${String(minutes).padStart(2, "0")}m`
+    : `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 }
 
 function emptyState(title, body) {
@@ -305,18 +301,38 @@ function mapAdvertiser(a) {
 }
 
 async function loadData() {
+  if (!window.akirsApi) return;
   dataState = "loading";
   dataError = null;
+  state.isLoading = true;
   render();
   try {
     const raw = await window.akirsApi.fetchAdvertisers();
-    state.profiles = raw.map(mapAdvertiser);
-    dataState = state.profiles.length ? "ready" : "empty";
+    profiles = raw.map(mapAdvertiser);
+    dataState = profiles.length ? "ready" : "empty";
   } catch (error) {
     dataError = error.message;
     dataState = "error";
+  } finally {
+    state.isLoading = false;
   }
   render();
+}
+
+async function loadJobs(shouldRender = true) {
+  if (!window.akirsApi?.fetchJobs) return;
+  try {
+    state.jobs = await window.akirsApi.fetchJobs();
+    if (!state.currentJob && state.jobs.length) {
+      state.currentJob = state.jobs[0];
+    } else if (state.currentJob) {
+      const fresh = state.jobs.find((job) => job.job_id === state.currentJob.job_id);
+      if (fresh) state.currentJob = fresh;
+    }
+  } catch (error) {
+    addActivity("Jobs", "Warning", `Could not load scraper jobs: ${error.message}`);
+  }
+  if (shouldRender) render();
 }
 
 function dataBanner() {
@@ -348,7 +364,7 @@ function render() {
     results: renderResults,
     review: renderReview,
     taxable: renderTaxable,
-    assistant: () => '<div class="panel">Assistant coming soon</div>',
+    assistant: renderAssistant,
     analytics: renderAnalytics,
     settings: renderSettings,
   };
@@ -361,6 +377,7 @@ function render() {
   app.focus({ preventScroll: true });
   renderAuthPanel();
   updateAuthChrome();
+  updateTopbarStatus();
   renderAuthOverlay();
   bindPageEvents(route);
 }
@@ -382,6 +399,24 @@ function updateAuthChrome() {
   const panelUsername = document.querySelector("#panel-username");
   if (panelUsername) panelUsername.textContent = username;
   document.body.classList.toggle("is-auth-locked", !user);
+}
+
+function updateTopbarStatus() {
+  const runningCount = activeJobs().length;
+  const browserChip = document.querySelector("#browser-status-chip");
+  const jobsChip = document.querySelector("#running-jobs-chip");
+  const active = runningCount > 0 || isScraperActive();
+
+  if (browserChip) {
+    browserChip.classList.toggle("is-active", active);
+    browserChip.classList.toggle("is-idle", !active);
+    browserChip.innerHTML = `<span></span> ${active ? "Scraper Active" : "Browser Idle"}`;
+  }
+
+  if (jobsChip) {
+    const label = runningCount === 1 ? "Running Job" : "Running Jobs";
+    jobsChip.textContent = `${runningCount} ${label}`;
+  }
 }
 
 function renderAuthPanel() {
@@ -415,11 +450,11 @@ function renderAuthPanel() {
   } else {
     panel.innerHTML = `
       <form id="panel-login-form" class="login-card" style="max-width:320px; padding:12px;">
-        <div style="display:flex; align-items:center; gap:12px;">
+        <div class="login-card__intro login-card__intro--compact">
           <div class="login-card__mark">${icon("lock")}</div>
           <div>
             <strong>Sign in</strong>
-            <p class="muted">Sign in to continue.</p>
+            <p class="muted">Use your AKIRS operator account.</p>
           </div>
         </div>
         <label style="margin-top:8px;">
@@ -431,13 +466,13 @@ function renderAuthPanel() {
            <input name="password" type="password" autocomplete="current-password" required />
         </label>
         <button class="button button--primary button--block" type="submit">${icon("login")} Sign In</button>
-        <p class="muted" style="margin:8px 0 0; text-align:center;"><a href="#" id="open-full-login">Open full sign-in</a></p>
+        <p class="login-card__hint">Local demo: <strong>user1</strong> / <strong>user1</strong></p>
+        <button id="open-full-login" class="button button--block" type="button">Open full sign-in</button>
       </form>
     `;
 
     panel.querySelector("#panel-login-form")?.addEventListener("submit", login);
-    panel.querySelector("#open-full-login")?.addEventListener("click", (e) => {
-      e.preventDefault();
+    panel.querySelector("#open-full-login")?.addEventListener("click", () => {
       renderAuthOverlay();
       document.querySelector('#login-form input[name="username"]')?.focus();
     });
@@ -454,10 +489,13 @@ function renderAuthOverlay(message = "") {
   authRoot.innerHTML = `
     <div class="auth-gate" role="dialog" aria-modal="true" aria-label="Sign in">
       <form id="login-form" class="login-card">
-        <div class="login-card__mark">${icon("lock")}</div>
-        <div>
-          <h1>AKIRS Scraper</h1>
-          <p class="muted">Sign in to continue.</p>
+        <div class="login-card__intro">
+          <div class="login-card__mark">${icon("lock")}</div>
+          <div>
+            <span class="eyebrow">Secure workspace</span>
+            <h1>AKIRS Scraper</h1>
+            <p class="muted">Sign in to view scraper records from the backend database.</p>
+          </div>
         </div>
         <label>
            <span class="label">Username</span>
@@ -467,6 +505,7 @@ function renderAuthOverlay(message = "") {
            <span class="label">Password</span>
            <input name="password" type="password" autocomplete="current-password" required />
         </label>
+        <p class="login-card__hint">Local demo account: <strong>user1</strong> / <strong>user1</strong></p>
         ${message ? `<p class="form-error">${escapeHtml(message)}</p>` : ""}
         <button class="button button--primary button--block" type="submit">${icon("login")} Sign In</button>
       </form>
@@ -504,7 +543,7 @@ function metric(label, value, iconName, trend = "", modifier = "") {
 function renderDashboard() {
   const profiles = state.profiles;
   const readyCount = state.taxable.length;
-  const activeJobs = state.currentJob && ["queued", "running"].includes(state.currentJob.status) ? 1 : 0;
+  const runningJobs = activeJobs().length;
 
   return `
     <section class="page">
@@ -512,14 +551,14 @@ function renderDashboard() {
         "Dashboard",
         "Operational overview for finding business contacts and preparing tax revenue outreach.",
         `<a class="button button--primary" href="#/scraper">${icon("play_arrow")} Launch Scraper</a>
-         <button class="button" type="button" data-toast="Saved dashboard filters">${icon("bookmark")} Saved Filters</button>`,
+         <button class="button" type="button" data-refresh-data>${icon("refresh")} Refresh Data</button>`,
       )}
 
       <div class="stats-grid">
         ${metric("Leads Collected", number(profiles.length), "group", state.isLoading ? "Loading backend data" : "From scraper database")}
         ${metric("Businesses Identified", number(profiles.length), "storefront", "Scraped advertisers")}
         ${metric("Outreach Ready", number(readyCount), "fact_check", "Taxable entities")}
-        ${metric("Active Jobs", number(activeJobs), "settings_remote", state.currentJob?.status || "No active job", "is-highlighted")}
+        ${metric("Active Jobs", number(runningJobs), "settings_remote", state.currentJob?.status || "No active job", runningJobs ? "is-highlighted" : "")}
       </div>
 
       <div class="dashboard-grid">
@@ -533,7 +572,7 @@ function renderDashboard() {
         <section class="panel span-4">
           <div class="panel__header"><h2>${icon("bolt")} Quick Actions</h2></div>
           <div class="list-stack">
-            ${quickAction("Start new scrape", "Launch a hidden browser search job", "play_circle", "#/scraper")}
+            ${quickAction("Start new scrape", "Open login browser, then queue scraper job", "play_circle", "#/scraper")}
             ${quickAction("Review pending leads", "Verify contact details before outreach", "rule", "#/review")}
             ${quickAction("Contact taxable businesses", "Open verified contacts ready for tax payment follow-up", "contact_mail", "#/taxable")}
           </div>
@@ -541,7 +580,7 @@ function renderDashboard() {
         <section class="panel span-12">
           <div class="panel__header">
             <h2>${icon("receipt_long")} Live Activity Log</h2>
-            <span class="status-chip"><span></span> Streaming</span>
+            <span class="status-chip ${runningJobs ? "is-active" : "is-idle"}"><span></span> ${runningJobs ? "Scraper Active" : "Idle"}</span>
           </div>
           ${activityTable()}
         </section>
@@ -561,7 +600,7 @@ function quickAction(title, body, iconName, href) {
 
 function renderScraper() {
   const job = state.currentJob;
-  const keywords = defaultConfig.query ? defaultConfig.query.split(",")[0].trim() : "";
+  const keywords = defaultConfig.keywords.split(",")[0].trim();
 
   return `
     <section class="page">
@@ -571,24 +610,21 @@ function renderScraper() {
         `<button id="start-scraping" class="button button--primary" type="button">${icon("play_arrow")} Start Scraping</button>
          <button class="button" type="button" data-toast="Job paused">${icon("pause")} Pause</button>
          <button class="button" type="button" data-toast="Job resumed">${icon("resume")} Resume</button>
-         <button id="stop-scraping" class="button button--danger" type="button">${icon("stop")} Stop</button>`,
+         <button class="button button--danger" type="button" data-confirm="Stop the active scraper job?">${icon("stop")} Stop</button>`,
       )}
 
       <div class="dashboard-grid">
-        <section class="panel span-5">   <span>1</span>
-                <span>4</span>
-                <span>8</span>
-                <span>12</span>
+        <section class="panel span-5">
           <div class="panel__header"><h2>${icon("tune")} Scraper Configuration</h2></div>
           <form id="scraper-config" class="config-form">
             ${selectField("Platform", ["Facebook", "Instagram", "LinkedIn", "X/Twitter", "TikTok", "Other"], "platform")}
-            ${selectField("Search Type", ["Business Owners", "Business Pages", "Companies", "Entrepreneurs", "Local Services"], "search_type")}
+            ${selectField("Search Type", ["All", "Business Owners", "Business Pages", "Companies", "Entrepreneurs", "Local Services"], "search_type")}
             <div class="form-grid">
               ${inputField("Target Country", defaultConfig.country, "country")}
               ${staticField("Target State", defaultConfig.state)}
               ${inputField("City", defaultConfig.city, "city")}
             </div>
-            ${inputField("Keywords", defaultConfig.query || "", "keywords")}
+            ${inputField("Keywords", defaultConfig.keywords, "keywords")}
             <label class="range-field">
               <span class="range-field__top">
                 <span class="label">Thread Count</span>
@@ -607,14 +643,12 @@ function renderScraper() {
 
         <section class="span-7">
           <div class="kpi-grid">
-            ${metric("Browser Status", job?.status || "Idle", "desktop_windows", job?.celery_task_id ? "Celery worker queued" : "Ready")}
-            ${metric("Current Query", keywords || "Not set", "search", `${defaultConfig.city}, ${defaultConfig.state}`)}
-            ${metric("Leads Found", number(job?.advertiser_count || state.profiles.length), "group_add", "Advertisers saved")}
+            ${metric("Browser Status", job?.status || "Idle", "desktop_windows", job?.celery_task_id ? "Celery worker queued" : "Login browser opens first")}
+            ${metric("Leads Found", number(job?.advertiser_count || 0), "group_add", "Advertisers saved")}
             ${metric("Ads Found", number(job?.ad_count || 0), "travel_explore", "From active job")}
-            ${metric("Keyword Runs", number(job?.keyword_run_count || 0), "check_circle", "Expanded scraper keywords")}
             ${metric("Job ID", job?.job_id || "-", "tag", job?.created_at ? formatDate(job.created_at) : "No job queued")}
             ${metric("Job Status", job?.status || "Idle", "queue", job?.error || "No backend errors")}
-            ${metric("Active Threads", "1", "memory", "Celery worker")}
+            ${metric("Running Jobs", number(activeJobs().length), "memory", "From backend jobs")}
           </div>
         </section>
 
@@ -624,6 +658,87 @@ function renderScraper() {
         </section>
       </div>
     </section>
+  `;
+}
+
+function scraperSignalPanel() {
+  const job = state.currentJob;
+  const active = isScraperActive(job);
+  const paused = job?.status === "paused";
+  const controllable = isJobControllable(job);
+  const jobs = state.jobs;
+  const params = job?.params || {};
+  const jobTitle = job ? `Job #${job.job_id}` : "No scraper job selected";
+  const locationText = (params.locations || []).join(", ") || "Default geography";
+
+  return `
+    <section class="scraper-signal ${active ? "is-active" : ""} ${paused ? "is-paused" : ""} ${!active && !paused ? "is-idle" : ""}" aria-live="polite">
+      <div class="signal-monitor">
+        <div class="signal-monitor__screen">
+          <div class="gear-field">
+            <div class="gear gear--outer">
+              <div class="gear gear--inner gear--inner-one"></div>
+              <div class="gear gear--inner gear--inner-two"></div>
+              <div class="gear gear--inner gear--inner-three"></div>
+            </div>
+          </div>
+        </div>
+        <div class="signal-monitor__meta">
+          <span class="eyebrow">${active ? "Scraper engine running" : paused ? "Scraper paused" : "Scraper engine idle"}</span>
+          <strong>${escapeHtml(jobTitle)}</strong>
+          <small>${escapeHtml(job?.status || "idle")} ${job?.error ? `- ${escapeHtml(job.error)}` : ""}</small>
+        </div>
+      </div>
+
+      <div class="signal-details">
+        <div><span class="label">Location</span><strong>${escapeHtml(locationText)}</strong></div>
+        <div><span class="label">Runtime</span><strong>${escapeHtml(runtimeLabel(job))}</strong></div>
+        <div><span class="label">Started</span><strong>${escapeHtml(job?.started_at ? formatDateTime(job.started_at) : "Not started")}</strong></div>
+        <div><span class="label">Ads</span><strong>${number(job?.ad_count || 0)}</strong></div>
+        <div><span class="label">Advertisers</span><strong>${number(job?.advertiser_count || 0)}</strong></div>
+      </div>
+
+      <div class="job-switcher">
+        <div class="job-switcher__top">
+          <strong>Scraping Jobs</strong>
+        </div>
+        <div class="scraper-controls">
+          ${
+            controllable
+              ? `<button class="button button--danger" type="button" data-stop-job="${job.job_id}">${icon("stop")} End</button>
+                 ${
+                   paused
+                     ? `<button class="button button--primary" type="button" data-resume-job="${job.job_id}">${icon("play_arrow")} Resume</button>`
+                     : `<button class="button" type="button" data-pause-job="${job.job_id}">${icon("pause")} Pause</button>`
+                 }`
+              : `<button id="start-scraping" class="button button--primary" type="button" data-start-scrape>${icon("play_arrow")} Start</button>`
+          }
+          <button class="button" type="button" data-new-scrape>${icon("add")} New Job</button>
+        </div>
+        <div class="job-switcher__list">
+          ${
+            jobs.length
+              ? jobs.map(jobButton).join("")
+              : `<p class="muted">No scraper jobs have been created yet.</p>`
+          }
+        </div>
+      </div>
+    </section>
+  `;
+}
+
+function jobButton(job) {
+  const selected = state.currentJob?.job_id === job.job_id;
+  const deletable = job.status === "stopped";
+  return `
+    <div class="job-pill ${selected ? "is-selected" : ""}">
+      <button class="job-pill__select" type="button" data-select-job="${job.job_id}">
+        <span class="status-dot is-${escapeHtml(job.status)}"></span>
+        <strong>#${job.job_id}</strong>
+        <small>${escapeHtml(job.status)}</small>
+      </button>
+      ${deletable ? `<button class="icon-button job-pill__delete" type="button" data-delete-job="${job.job_id}" aria-label="Delete job #${job.job_id}" title="Delete stopped job">${icon("delete")}</button>` : ""}
+    </div>
   `;
 }
 
@@ -673,22 +788,26 @@ function renderResults() {
 
 function profileCard(profile) {
   const website = profile.website || profile.fbUrl || "";
+  const platforms = profile.platforms || [];
+  const emails = profile.emails || [];
+  const phones = profile.phones || [];
+  const sources = profile.sources || [];
   return `
     <article class="profile-card" data-profile="${escapeHtml(`${profile.name} ${profile.platform} ${profile.location} ${profile.contact}`.toLowerCase())}">
       <div class="profile-card__header">
         <div>
           <h2>${escapeHtml(profile.name)}</h2>
           <div class="tag-row">
-            ${(profile.platforms.length ? profile.platforms : [profile.platform]).map((p) => `<span class="badge">${escapeHtml(p)}</span>`).join(" ")}
+            ${(platforms.length ? platforms : [profile.platform]).map((p) => `<span class="badge">${escapeHtml(p)}</span>`).join(" ")}
           </div>
         </div>
         <span class="score-ring">${number(profile.followers)}</span>
       </div>
       <dl class="detail-list">
         <div><dt>Location</dt><dd>${escapeHtml(profile.location)}</dd></div>
-        <div><dt>Email</dt><dd>${escapeHtml(profile.emails[0] || "Not found")}</dd></div>
-        <div><dt>Phone</dt><dd>${escapeHtml(profile.phones[0] || "Not found")}</dd></div>
-        <div><dt>Sources</dt><dd>${profile.sources.length ? escapeHtml(profile.sources.join(", ")) : "—"}</dd></div>
+        <div><dt>Email</dt><dd>${escapeHtml(emails[0] || "Not found")}</dd></div>
+        <div><dt>Phone</dt><dd>${escapeHtml(phones[0] || "Not found")}</dd></div>
+        <div><dt>Sources</dt><dd>${sources.length ? escapeHtml(sources.join(", ")) : "-"}</dd></div>
       </dl>
       <div class="link-stack">
         <a href="${escapeHtml(profile.fbUrl || "#")}" target="_blank" rel="noopener">Facebook page</a>
@@ -717,7 +836,6 @@ function renderReview() {
         ${profiles.length ? reviewTable(profiles) : emptyState("Nothing to review", "Collected advertisers will move into this queue after scraping.")}
         <div class="panel__footer">
           <span class="label">Showing ${number(profiles.length)} records from the backend.</span>
-          ${pagination()}
         </div>
       </div>
     </section>
@@ -743,7 +861,7 @@ function renderTaxable() {
       </div>
       <div class="panel">
         ${approved.length ? taxableTable(approved) : emptyState("No taxable entities yet", "Run tax classification after scraping to populate this list.")}
-        <div class="panel__footer"><span class="label">Verified businesses with usable contact details</span>${pagination()}</div>
+        <div class="panel__footer"><span class="label">Verified businesses with usable contact details</span></div>
       </div>
     </section>
   `;
@@ -767,7 +885,7 @@ function renderAnalytics() {
         ${chartPanel("Businesses By Industry", [["Advertisers", profiles.length ? 100 : 0], ["Taxable", readyCount ? Math.round((readyCount / Math.max(profiles.length, 1)) * 100) : 0]])}
         ${chartPanel("Platform Distribution", [["Selected Source", profiles.length ? 100 : 0], ["Other Sources", 0]])}
         ${chartPanel("Contact Readiness", [["Ready", readyCount], ["Pending", pendingCount]])}
-        ${chartPanel("Job Progress", [["Ads", state.currentJob?.ad_count || 0], ["Keywords", state.currentJob?.keyword_run_count || 0]])}
+        ${chartPanel("Job Progress", [["Ads", state.currentJob?.ad_count || 0], ["Advertisers", state.currentJob?.advertiser_count || 0]])}
       </div>
     </section>
   `;
@@ -861,6 +979,10 @@ function filterBar(filters, placeholder) {
 }
 
 function activityTable() {
+  if (!state.activityLog.length) {
+    return emptyState("No scraper activity yet", "Start a scraping job to see live browser and job events here.");
+  }
+
   return `
     <div class="table-wrap activity-log">
       <table class="activity-table">
@@ -918,17 +1040,23 @@ function resultsTable(rows) {
         <tbody>
           ${rows
             .map(
-              (profile) => `
+              (profile) => {
+                const platforms = profile.platforms || [];
+                const emails = profile.emails || [];
+                const phones = profile.phones || [];
+                const sources = profile.sources || [];
+                return `
                 <tr data-profile="${escapeHtml(`${profile.name} ${profile.platform} ${profile.location} ${profile.contact}`.toLowerCase())}">
                   <td><strong>${escapeHtml(profile.name)}</strong><small>${escapeHtml(profile.fbUrl || "")}</small></td>
-                  <td>${(profile.platforms.length ? profile.platforms : [profile.platform]).map((p) => `<span class="badge">${escapeHtml(p)}</span>`).join(" ")}</td>
+                  <td>${(platforms.length ? platforms : [profile.platform]).map((p) => `<span class="badge">${escapeHtml(p)}</span>`).join(" ")}</td>
                   <td>${escapeHtml(profile.location)}</td>
-                  <td><strong>${escapeHtml(profile.contact)}</strong>${profile.emails[0] && profile.phones[0] ? `<small>${escapeHtml(profile.phones[0])}</small>` : ""}</td>
-                  <td>${profile.sources.length ? profile.sources.map((s) => `<span class="badge">${escapeHtml(s)}</span>`).join(" ") : "—"}</td>
+                  <td><strong>${escapeHtml(profile.contact)}</strong>${emails[0] && phones[0] ? `<small>${escapeHtml(phones[0])}</small>` : ""}</td>
+                  <td>${sources.length ? sources.map((s) => `<span class="badge">${escapeHtml(s)}</span>`).join(" ") : "-"}</td>
                   <td>${escapeHtml(profile.found)}</td>
                   <td><div class="table-actions">${businessTableActions(profile)}</div></td>
                 </tr>
-              `,
+              `;
+              },
             )
             .join("")}
         </tbody>
@@ -998,18 +1126,6 @@ function taxableTable(rows) {
   `;
 }
 
-function pagination() {
-  return `
-    <div class="pagination">
-      <button class="icon-button" type="button" aria-label="Previous page">${icon("chevron_left")}</button>
-      <button class="button button--primary" type="button">1</button>
-      <button class="button" type="button">2</button>
-      <button class="button" type="button">3</button>
-      <button class="icon-button" type="button" aria-label="Next page">${icon("chevron_right")}</button>
-    </div>
-  `;
-}
-
 function statusClass(status) {
   if (status === "Ready To Contact") return "is-approved";
   if (status === "Rejected") return "is-rejected";
@@ -1017,8 +1133,17 @@ function statusClass(status) {
   return "is-running";
 }
 
-function renderDrawer(name) {
-  const profile = profiles.find((item) => item.name === name) || profiles[0];
+function renderDrawer(profileId) {
+  const allProfiles = [...state.profiles, ...state.taxable];
+  const profile = allProfiles.find((item) => String(item.id) === String(profileId)) || allProfiles[0];
+  if (!profile) return;
+  const socialLinks = (profile.socialLinks || [])
+    .map((link) => `<a href="${escapeHtml(link.url)}" target="_blank" rel="noopener">${escapeHtml(link.platform || link.url)}</a>`)
+    .join(" ");
+  const emails = profile.emails || [];
+  const phones = profile.phones || [];
+  const addresses = profile.addresses || [];
+  const sources = profile.sources || [];
   drawerRoot.innerHTML = `
     <div class="drawer-backdrop" data-close-drawer></div>
     <aside class="drawer" role="dialog" aria-modal="true" aria-label="Business details">
@@ -1035,14 +1160,14 @@ function renderDrawer(name) {
           <p class="muted">${profile.industry} business in ${profile.location}</p>
           <div class="stats-grid compact-grid">
             ${metric("Followers", number(profile.followers), "group")}
-            ${metric("Sources", profile.sources.length, "travel_explore")}
+            ${metric("Sources", sources.length, "travel_explore")}
           </div>
         </section>
         <section class="form-stack">
-          ${evidenceCard("mail", "Emails", profile.emails.length ? escapeHtml(profile.emails.join(", ")) : "No email discovered", "")}
-          ${evidenceCard("call", "Phones", profile.phones.length ? escapeHtml(profile.phones.join(", ")) : "No phone discovered", "")}
-          ${evidenceCard("location_on", "Addresses", profile.addresses.length ? escapeHtml(profile.addresses.join(" • ")) : "No address discovered", "")}
-          ${evidenceCard("link", "Social Links", links || "No links found", "")}
+          ${evidenceCard("mail", "Emails", emails.length ? escapeHtml(emails.join(", ")) : "No email discovered", "")}
+          ${evidenceCard("call", "Phones", phones.length ? escapeHtml(phones.join(", ")) : "No phone discovered", "")}
+          ${evidenceCard("location_on", "Addresses", addresses.length ? escapeHtml(addresses.join(" / ")) : "No address discovered", "")}
+          ${evidenceCard("link", "Social Links", socialLinks || "No links found", "")}
           ${evidenceCard("payments", "Tax Payment Outreach", "Prepare a clear message about tax revenue payment obligations and next steps.", "is-muted")}
         </section>
       </div>
@@ -1056,6 +1181,102 @@ function renderDrawer(name) {
   drawerRoot.querySelectorAll("[data-toast]").forEach((button) => {
     button.onclick = () => showToast(button.dataset.toast);
   });
+}
+
+async function login(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const button = form.querySelector("button[type='submit']");
+  const data = new FormData(form);
+
+  if (button) button.disabled = true;
+  try {
+    const user = await apiFetch("/auth/login", {
+      method: "POST",
+      body: JSON.stringify({
+        username: data.get("username"),
+        password: data.get("password"),
+      }),
+    });
+    state.user = user;
+    window.localStorage.setItem("akirs.user", JSON.stringify(user));
+    render();
+  } catch (error) {
+    renderAuthOverlay(error.message || "Sign in failed");
+  } finally {
+    if (button) button.disabled = false;
+  }
+}
+
+function signOut() {
+  state.user = null;
+  window.localStorage.removeItem("akirs.user");
+  render();
+}
+
+async function startScraping() {
+  const form = document.querySelector("#scraper-config");
+  const startButton = document.querySelector("[data-start-scrape], #start-scraping");
+  const formData = form ? new FormData(form) : new FormData();
+  const city = String(formData.get("city") || defaultConfig.city).trim();
+  const searchType = String(formData.get("search_type") || "All").trim();
+
+  if (startButton) startButton.disabled = true;
+  addActivity("Browser", "Running", "Opening Facebook login browser. Log in, then close that browser to start scraping.");
+
+  try {
+    const job = await apiFetch("/jobs/scrape/after-login", {
+      method: "POST",
+      body: JSON.stringify({
+        country: formData.get("country") || defaultConfig.country,
+        locations: city ? [city] : undefined,
+        categories: searchType && searchType !== "All" ? [searchType] : undefined,
+      }),
+    });
+    state.currentJob = job;
+    await loadJobs(false);
+    addActivity("Scraper", "Success", `Login browser closed. Scrape job ${job.job_id} queued.`);
+  } catch (error) {
+    addActivity("Scraper", "Warning", `Could not start scrape: ${error.message}`);
+  } finally {
+    if (startButton) startButton.disabled = false;
+  }
+}
+
+async function updateJobAction(jobId, action) {
+  const actionMap = {
+    pause: window.akirsApi.pauseJob,
+    resume: window.akirsApi.resumeJob,
+    stop: window.akirsApi.stopJob,
+  };
+  const actionLabels = {
+    pause: "paused",
+    resume: "resumed",
+    stop: "ended",
+  };
+  const request = actionMap[action];
+  if (!request) return;
+
+  try {
+    state.currentJob = await request(jobId);
+    await loadJobs(false);
+    addActivity("Scraper", "Success", `Job #${jobId} ${actionLabels[action]}.`);
+    render();
+  } catch (error) {
+    addActivity("Scraper", "Warning", `Could not ${action} job #${jobId}: ${error.message}`);
+  }
+}
+
+async function deleteScrapeJob(jobId) {
+  try {
+    await window.akirsApi.deleteJob(jobId);
+    if (state.currentJob?.job_id === jobId) state.currentJob = null;
+    await loadJobs(false);
+    addActivity("Jobs", "Success", `Deleted stopped job #${jobId}.`);
+    render();
+  } catch (error) {
+    addActivity("Jobs", "Warning", `Could not delete job #${jobId}: ${error.message}`);
+  }
 }
 
 function evidenceCard(iconName, title, body, modifier) {
@@ -1113,8 +1334,45 @@ function bindPageEvents(route) {
   }
 
   document.querySelector("#start-scraping")?.addEventListener("click", startScraping);
-  document.querySelector("#stop-scraping")?.addEventListener("click", stopScraping);
   document.querySelector("#sign-out")?.addEventListener("click", signOut);
+  document.querySelector("[data-pause-job]")?.addEventListener("click", (event) => {
+    updateJobAction(Number(event.currentTarget.dataset.pauseJob), "pause");
+  });
+  document.querySelector("[data-resume-job]")?.addEventListener("click", (event) => {
+    updateJobAction(Number(event.currentTarget.dataset.resumeJob), "resume");
+  });
+  document.querySelector("[data-stop-job]")?.addEventListener("click", (event) => {
+    const jobId = Number(event.currentTarget.dataset.stopJob);
+    if (window.confirm(`End scraper job #${jobId}?`)) updateJobAction(jobId, "stop");
+  });
+  document.querySelectorAll("[data-delete-job]").forEach((button) => {
+    button.onclick = (event) => {
+      event.stopPropagation();
+      const jobId = Number(button.dataset.deleteJob);
+      if (window.confirm(`Delete stopped scraper job #${jobId}?`)) deleteScrapeJob(jobId);
+    };
+  });
+  document.querySelector("[data-refresh-data]")?.addEventListener("click", loadData);
+  document.querySelector("[data-new-scrape]")?.addEventListener("click", () => {
+    state.currentJob = null;
+    render();
+    document.querySelector("#scraper-config input[name='city']")?.focus();
+  });
+  document.querySelectorAll("[data-select-job]").forEach((button) => {
+    button.onclick = async () => {
+      const jobId = Number(button.dataset.selectJob);
+      const cached = state.jobs.find((job) => job.job_id === jobId);
+      if (cached) state.currentJob = cached;
+      render();
+      try {
+        state.currentJob = await window.akirsApi.fetchJob(jobId);
+        await loadJobs(false);
+        render();
+      } catch (error) {
+        addActivity("Jobs", "Warning", `Could not open job #${jobId}: ${error.message}`);
+      }
+    };
+  });
 
   if (route === "results") {
     const tableButton = document.querySelector("[data-view='table']");
@@ -1134,25 +1392,6 @@ function bindPageEvents(route) {
     };
   }
 
-  if (route === "assistant") {
-    bindChatForm(document.querySelector("#chat-form-page"));
-    refreshChatViews();
-    const syncBtn = document.querySelector("#chat-sync");
-    if (syncBtn) {
-      syncBtn.onclick = async () => {
-        syncBtn.disabled = true;
-        showToast("Syncing knowledge base…");
-        try {
-          const r = await window.akirsApi.ingestFromScraper();
-          showToast(`Synced ${r.advertisers_processed} businesses (${r.chunks_created} chunks)`);
-        } catch (error) {
-          showToast(`Sync failed: ${error.message}`);
-        } finally {
-          syncBtn.disabled = false;
-        }
-      };
-    }
-  }
 }
 
 drawerRoot.addEventListener("click", (event) => {
@@ -1205,3 +1444,19 @@ if (!window.location.hash) {
 } else {
   render();
 }
+
+loadData();
+
+window.setInterval(async () => {
+  if (!window.akirsApi) return;
+  await loadJobs(false);
+  if (state.currentJob && isScraperActive(state.currentJob)) {
+    try {
+      state.currentJob = await window.akirsApi.fetchJob(state.currentJob.job_id);
+    } catch {
+      // Keep the last visible job state if a polling request fails.
+    }
+  }
+  updateTopbarStatus();
+  if (getRoute() === "scraper") render();
+}, 5000);

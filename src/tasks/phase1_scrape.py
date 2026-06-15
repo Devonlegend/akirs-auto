@@ -38,17 +38,20 @@ def scrape_facebook_ads_job(self, job_id: int, params: dict[str, Any]) -> dict[s
 
 async def _run(job_id: int, params: dict[str, Any], celery_task_id: str | None) -> dict[str, Any]:
     settings = get_settings()
-    settings = get_settings()
 
     target = int(params.get("target_ads_per_keyword", settings.target_ads_per_keyword_default))
     cap = int(params.get("keyword_cap", settings.keyword_cap_default))
     run_recon = bool(params.get("run_recon", True))
     country = params.get("country", settings.fb_ads_country)
+    user_data_dir = params.get("facebook_user_data_dir") or str(settings.fb_ads_user_data_dir)
+    user_keywords = params.get("user_keywords") or [
+        item.strip() for item in settings.scraper_keywords.split(",") if item.strip()
+    ]
 
     specs = expand(
         locations=params.get("locations"),
         categories=params.get("categories"),
-        user_keywords=params.get("user_keywords"),
+        user_keywords=user_keywords,
         use_llm=bool(params.get("use_llm_expansion", False)),
         cap=cap,
     )
@@ -60,13 +63,21 @@ async def _run(job_id: int, params: dict[str, Any], celery_task_id: str | None) 
     new_advertiser_ids: list[int] = []
     total_ads = 0
     error_msg: str | None = None
+    final_status: str | None = None
 
     try:
-        async with launch_browser(headless=settings.fb_ads_headless) as (_browser, _context, page):
+        async with launch_browser(
+            headless=settings.fb_ads_headless,
+            user_data_dir=user_data_dir,
+        ) as (_browser, _context, page):
             scraper = FacebookAdsScraper(page)
             await scraper.setup(country=country)
 
             for spec in specs:
+                if not await _wait_until_job_can_continue(job_id):
+                    logger.info("Phase 1: job %s stopped before keyword '%s'", job_id, spec.keyword)
+                    break
+
                 logger.info(f"Phase 1: scraping keyword='{spec.keyword}' location='{spec.location}'")
                 async with AsyncSessionLocal() as session:
                     geo_repo = GeographyRepository(session)
@@ -119,10 +130,13 @@ async def _run(job_id: int, params: dict[str, Any], celery_task_id: str | None) 
         error_msg = str(e)
 
     async with AsyncSessionLocal() as session:
-        await JobRepository(session).mark_completed(job_id, error=error_msg)
-        await session.commit()
+        job = await JobRepository(session).get(job_id)
+        final_status = job.status if job else None
+        if job and job.status != "stopped":
+            await JobRepository(session).mark_completed(job_id, error=error_msg)
+            await session.commit()
 
-    if run_recon and new_advertiser_ids and not error_msg:
+    if run_recon and new_advertiser_ids and not error_msg and final_status != "stopped":
         _dispatch_recon(job_id, new_advertiser_ids)
 
     return {
@@ -132,6 +146,20 @@ async def _run(job_id: int, params: dict[str, Any], celery_task_id: str | None) 
         "new_advertisers": len(new_advertiser_ids),
         "error": error_msg,
     }
+
+
+async def _wait_until_job_can_continue(job_id: int) -> bool:
+    while True:
+        async with AsyncSessionLocal() as session:
+            job = await JobRepository(session).get(job_id)
+            status = job.status if job else "stopped"
+
+        if status == "stopped":
+            return False
+        if status != "paused":
+            return True
+
+        await asyncio.sleep(2)
 
 
 def _dispatch_recon(job_id: int, advertiser_ids: list[int]) -> None:

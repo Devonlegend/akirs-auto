@@ -1,6 +1,14 @@
 // Lightweight API client for the AKIRS backend.
-// The frontend is served from a separate static host, so use an absolute base URL.
-const API_BASE = "http://localhost:8000";
+// The frontend never reads akirs.db directly; it loads database records through
+// these backend endpoints so the same UI works locally and when served at /ui.
+(function () {
+function resolveApiBase() {
+  if (window.AKIRS_API_BASE) return window.AKIRS_API_BASE;
+  if (window.location.pathname.startsWith("/ui")) return "";
+  return "http://127.0.0.1:8000";
+}
+
+const API_BASE = resolveApiBase();
 
 async function request(path, options = {}) {
   const res = await fetch(`${API_BASE}${path}`, {
@@ -17,6 +25,7 @@ async function request(path, options = {}) {
     }
     throw new Error(detail);
   }
+  if (res.status === 204) return null;
   return res.json();
 }
 
@@ -25,38 +34,45 @@ async function fetchAdvertisers() {
   return request("/scraped/advertisers/");
 }
 
-// POST /chatbot/chat -> { answer, sources, ... }
-async function sendChat(question, collection = "akirs_businesses") {
-  return request("/chatbot/chat", {
-    method: "POST",
-    body: JSON.stringify({ collection, question }),
-  });
+// GET /taxation/entities -> list of classified taxable entities
+async function fetchTaxableEntities() {
+  return request("/taxation/entities");
 }
 
-// POST /chatbot/ingest/from-scraper -> ingest scraped advertisers into the RAG store
-async function ingestFromScraper(collection = "akirs_businesses") {
-  return request("/chatbot/ingest/from-scraper", {
-    method: "POST",
-    body: JSON.stringify({ collection }),
-  });
+async function fetchJobs() {
+  return request("/jobs");
 }
 
-// POST /jobs/scrape -> trigger the background Celery worker
-async function startScrapeJob(payload) {
-  return request("/jobs/scrape", {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
-}
-
-// GET /jobs/{job_id} -> get job status and live counts
-async function pollJobStatus(jobId) {
+async function fetchJob(jobId) {
   return request(`/jobs/${jobId}`);
 }
 
-// POST /jobs/{job_id}/stop -> stop a running job
-async function stopScrapeJob(jobId) {
+async function pauseJob(jobId) {
+  return request(`/jobs/${jobId}/pause`, { method: "POST" });
+}
+
+async function resumeJob(jobId) {
+  return request(`/jobs/${jobId}/resume`, { method: "POST" });
+}
+
+async function stopJob(jobId) {
   return request(`/jobs/${jobId}/stop`, { method: "POST" });
 }
 
-window.akirsApi = { API_BASE, fetchAdvertisers, sendChat, ingestFromScraper, startScrapeJob, pollJobStatus, stopScrapeJob };
+async function deleteJob(jobId) {
+  return request(`/jobs/${jobId}`, { method: "DELETE" });
+}
+
+window.akirsApi = {
+  API_BASE,
+  fetchAdvertisers,
+  fetchTaxableEntities,
+  fetchJobs,
+  fetchJob,
+  pauseJob,
+  resumeJob,
+  stopJob,
+  deleteJob,
+};
+})();
+>>>>>>> e68ad67 (Remove chat UI and complete auth modal)

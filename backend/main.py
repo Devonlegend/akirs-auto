@@ -2,6 +2,7 @@ import logging
 import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
+
 # The `src/` package is laid out so its modules import each other as top-level
 # packages (e.g. `from taxation.agent import ...`, matching pyproject's
 # `pythonpath = ["src"]`). Running uvicorn only puts the repo root on sys.path,
@@ -18,11 +19,25 @@ from backend.database import AsyncSessionLocal, Base, engine
 from backend.models import users  # noqa: F401 - register auth tables with SQLAlchemy metadata
 from backend.routers import auth, scraped, taxation
 from backend.services.auth_queries import seed_default_users
-from chatbot.api.routes import prepare_pipeline, shutdown_pipeline
-from chatbot.api.routes import router as chatbot_router
 from api.routes import advertisers as api_advertisers
 from api.routes import geography as api_geography
 from api.routes import jobs as api_jobs
+
+try:
+    from chatbot.api.routes import prepare_pipeline, shutdown_pipeline
+    from chatbot.api.routes import router as chatbot_router
+except ModuleNotFoundError as exc:
+    logging.getLogger("backend").warning(
+        "Chatbot routes disabled because optional dependency %s is not installed.",
+        exc.name,
+    )
+    chatbot_router = None
+
+    async def prepare_pipeline():
+        return None
+
+    async def shutdown_pipeline():
+        return None
 
 
 @asynccontextmanager
@@ -62,7 +77,8 @@ app.add_middleware(
 app.include_router(scraped.router)
 app.include_router(taxation.router)
 app.include_router(auth.router)
-app.include_router(chatbot_router)
+if chatbot_router is not None:
+    app.include_router(chatbot_router)
 app.include_router(api_jobs.router)
 app.include_router(api_advertisers.router)
 app.include_router(api_geography.router)

@@ -29,12 +29,14 @@ class Settings(BaseSettings):
     )
     fb_ads_country: str = Field(default="Nigeria")
     fb_ads_headless: bool = Field(default=True)
+    fb_ads_user_data_dir: Path = Field(default=Path(".akirs-browser/facebook"))
     fb_ads_max_scrolls: int = Field(default=40)
     fb_ads_empty_scroll_threshold: int = Field(default=5)
     fb_ads_scroll_delay_ms: int = Field(default=1200)
 
     keyword_cap_default: int = Field(default=50)
     target_ads_per_keyword_default: int = Field(default=20)
+    scraper_keywords: str = Field(default="restaurant, hotel, boutique, pharmacy")
 
     hunter_api_key: str | None = None
     apollo_api_key: str | None = None

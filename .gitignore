@@ -27,10 +27,14 @@ Thumbs.db
 
 # Playwright
 .auth/
+.akirs-browser/
 *.pyc
 .claude/
 agent*.md
 *.db
+*.db-journal
+*.db-wal
+*.db-shm
 
 # Chatbot vector store (ChromaDB persistent storage)
 chatbot_data/

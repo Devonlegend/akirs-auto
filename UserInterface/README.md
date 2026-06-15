@@ -6,7 +6,7 @@ Static HTML, CSS, and JavaScript frontend for a backend business-lead scraper.
 
 - `index.html` - application shell, top header, and collapsible sidebar
 - `css/styles.css` - responsive enterprise dashboard styling with light and dark mode
-- `js/app.js` - hash routing, mock data, reusable render helpers, and UI interactions
+- `js/app.js` - hash routing, backend data loading, reusable render helpers, and UI interactions
 
 ## Pages
 
@@ -20,19 +20,19 @@ Static HTML, CSS, and JavaScript frontend for a backend business-lead scraper.
 
 ## Run Locally
 
-Open `index.html` directly in a browser, or serve the folder with any static server:
+Run the FastAPI backend from the project root so the UI can load records from `akirs.db`:
 
 ```bash
-python3 -m http.server 5173
+.venv/bin/uvicorn backend.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
-Then visit `http://localhost:5173`.
+Then visit `http://127.0.0.1:8000/ui/`.
 
 ## Backend Integration Notes
 
-Mock data is centralized near the top of `js/app.js`:
+The frontend does not read the SQLite file directly. It uses backend endpoints for scraper records, taxable entities, and scrape job status:
 
-- `profiles` mock business lead data
-- `activityLog`
-
-Replace those arrays with API calls when backend endpoints are ready. The UI already separates rendering helpers for cards, tables, activity logs, KPI cards, drawers, toasts, and filters so backend pagination, saved filters, and bulk actions can be wired in without changing the layout.
+- `/scraped/advertisers/`
+- `/taxation/entities`
+- `/jobs`
+- `/jobs/{job_id}`

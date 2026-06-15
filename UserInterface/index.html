@@ -27,8 +27,8 @@
         <input id="global-search" type="search" placeholder="Search businesses, leads, locations..." />
       </label>
       <div class="topbar__actions">
-        <span class="status-chip"><span></span> Browser is Active</span>
-        <span class="counter-chip">3 Running Jobs</span>
+        <span id="browser-status-chip" class="status-chip is-idle"><span></span> Browser Idle</span>
+        <span id="running-jobs-chip" class="counter-chip">0 Running Jobs</span>
         <button id="theme-toggle" class="icon-button" type="button" aria-label="Toggle theme">
           <span class="material-symbols-outlined">dark_mode</span>
         </button>
@@ -100,10 +100,6 @@
           <span class="material-symbols-outlined">request_quote</span>
           <span>Taxable Businesses</span>
         </a>
-        <a href="#/assistant" data-route="assistant">
-          <span class="material-symbols-outlined">forum</span>
-          <span>AI Assistant</span>
-        </a>
         <a href="#/analytics" data-route="analytics">
           <span class="material-symbols-outlined">monitoring</span>
           <span>Analytics</span>
@@ -114,17 +110,9 @@
         </a>
       </nav>
       <div class="sidebar__footer">
-        <button class="button button--primary button--block" type="button">
+        <a class="button button--primary button--block" href="#/scraper">
           <span class="material-symbols-outlined">play_circle</span>
           New Scrape Job
-        </button>
-        <a href="#">
-          <span class="material-symbols-outlined">help</span>
-          Docs
-        </a>
-        <a href="#">
-          <span class="material-symbols-outlined">contact_support</span>
-          Support
         </a>
       </div>
     </aside>
@@ -132,9 +120,8 @@
     <main id="app" class="app-shell" tabindex="-1"></main>
 
     <div id="drawer-root"></div>
-    <div id="chat-widget"></div>
-    <div id="auth-root"></div>
     <script src="js/api.js" defer></script>
+    <div id="auth-root"></div>
     <script src="js/app.js" defer></script>
   </body>
 </html>
