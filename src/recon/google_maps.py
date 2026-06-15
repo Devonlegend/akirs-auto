@@ -14,8 +14,8 @@ from playwright.async_api import Error as PlaywrightError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.db.models import Advertiser
-from recon.base import ReconFindingData, ReconSource
-from scrapers.browser import launch_browser
+from src.recon.base import ReconFindingData, ReconSource
+from src.scrapers.browser import launch_browser
 
 logger = logging.getLogger(__name__)
 

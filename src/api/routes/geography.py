@@ -4,8 +4,8 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.deps import db_session
-from api.schemas import GeographyOut
+from src.api.deps import db_session
+from src.api.schemas import GeographyOut
 from src.db.models import Geography
 
 router = APIRouter(prefix="/geography", tags=["geography"])

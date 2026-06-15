@@ -5,12 +5,14 @@ function resolveApiBase() {
 }
 
 const APP_API_BASE = resolveApiBase();
+
 const defaultConfig = {
   country: "Nigeria",
   state: "Akwa Ibom",
   city: "Uyo",
 };
 const DEFAULT_SCRAPER_KEYWORDS = "restaurant, hotel, boutique, pharmacy";
+
 
 const app = document.querySelector("#app");
 const drawerRoot = document.querySelector("#drawer-root");
@@ -257,6 +259,7 @@ async function loadData(shouldRender = true, showLoading = true) {
     if (shouldRender) render();
   }
   try {
+
     const [advertisersResult, taxableResult] = await Promise.allSettled([
       window.akirsApi.fetchAdvertisers(),
       window.akirsApi.fetchTaxableEntities(),

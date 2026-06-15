@@ -23,7 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config.settings import get_settings
 from src.db.models import Advertiser
-from recon.base import ReconFindingData, ReconSource
+from src.recon.base import ReconFindingData, ReconSource
 
 logger = logging.getLogger(__name__)
 

@@ -23,7 +23,7 @@ from src.db.repositories import (
     KeywordRunRepository,
     SocialLinkRepository,
 )
-from keywords import expand
+from src.keywords import expand
 from src.scrapers.browser import launch_browser
 from src.scrapers.facebook_ads import FacebookAdsScraper
 

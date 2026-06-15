@@ -38,3 +38,8 @@ agent*.md
 
 # Chatbot vector store (ChromaDB persistent storage)
 chatbot_data/
+
+debug.py
+fix*.py
+scratch.py
+.playwright-cli/*

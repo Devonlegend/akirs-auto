@@ -1,8 +1,8 @@
 import pytest
 
 from src.db.models import Advertiser
-from recon.base import ReconCoordinator, ReconFindingData, ReconSource
-from recon.registry import build_default_coordinator
+from src.recon.base import ReconCoordinator, ReconFindingData, ReconSource
+from src.recon.registry import build_default_coordinator
 
 
 class _FakeSource(ReconSource):

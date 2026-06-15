@@ -1,6 +1,6 @@
 import pytest
 
-from exporters import CSVExportService
+from src.exporters import CSVExportService
 from src.db.repositories import AdvertiserRepository, SocialLinkRepository
 
 

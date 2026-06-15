@@ -19,6 +19,7 @@ from backend.database import AsyncSessionLocal, Base, engine
 from backend.models import users  # noqa: F401 - register auth tables with SQLAlchemy metadata
 from backend.routers import auth, scraped, taxation
 from backend.services.auth_queries import seed_default_users
+
 from api.routes import advertisers as api_advertisers
 from api.routes import geography as api_geography
 from api.routes import jobs as api_jobs
@@ -37,7 +38,6 @@ async def lifespan(app: FastAPI):
 
     async with AsyncSessionLocal() as session:
         await seed_default_users(session)
-
     yield
 
 

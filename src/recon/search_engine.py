@@ -19,9 +19,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config.settings import get_settings
 from src.db.models import Advertiser
-from recon.base import ReconFindingData, ReconSource
-from recon.extractors import extract_emails, extract_phones
-from scrapers.browser import launch_browser
+from src.recon.base import ReconFindingData, ReconSource
+from src.recon.extractors import extract_emails, extract_phones
+from src.scrapers.browser import launch_browser
 
 logger = logging.getLogger(__name__)
 
