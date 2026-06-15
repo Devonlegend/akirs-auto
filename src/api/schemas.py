@@ -27,6 +27,14 @@ class ScrapeJobRequest(BaseModel):
         default=None,
         description="Persistent Playwright profile used after the manual Facebook login window closes.",
     )
+    operator_user_id: int | None = Field(
+        default=None,
+        description="Signed-in AKIRS user id that owns this job.",
+    )
+    operator_username: str | None = Field(
+        default=None,
+        description="Signed-in AKIRS username that owns this job.",
+    )
 
 
 class JobCreatedResponse(BaseModel):

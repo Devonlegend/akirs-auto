@@ -10,6 +10,7 @@ const defaultConfig = {
   state: "Akwa Ibom",
   city: "Uyo",
 };
+const DEFAULT_SCRAPER_KEYWORDS = "restaurant, hotel, boutique, pharmacy";
 
 const app = document.querySelector("#app");
 const drawerRoot = document.querySelector("#drawer-root");
@@ -22,6 +23,7 @@ const state = {
   currentJob: null,
   isLoading: false,
   user: readStoredUser(),
+  scraperKeywords: readStoredKeywords(readStoredUser()),
 };
 let dataState = "ready";
 let dataError = null;
@@ -84,6 +86,41 @@ function readStoredUser() {
   } catch {
     return null;
   }
+}
+
+function accountStorageKey(baseKey, user = state?.user) {
+  return user?.id ? `${baseKey}.${user.id}` : baseKey;
+}
+
+function readStoredKeywords(user = state?.user) {
+  return (
+    window.localStorage.getItem(accountStorageKey("akirs.scraperKeywords", user)) ||
+    window.localStorage.getItem("akirs.scraperKeywords") ||
+    DEFAULT_SCRAPER_KEYWORDS
+  );
+}
+
+function writeStoredKeywords(value) {
+  window.localStorage.setItem(accountStorageKey("akirs.scraperKeywords"), value);
+}
+
+function parseKeywords(value) {
+  return String(value || "")
+    .split(/[\n,]+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function accountSlug(user = state.user) {
+  return String(user?.username || user?.id || "guest")
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "-")
+    .replace(/^-+|-+$/g, "") || "guest";
+}
+
+function jobBelongsToCurrentUser(job) {
+  if (!state.user) return false;
+  return String(job?.params?.operator_user_id || "") === String(state.user.id);
 }
 
 function initials(value) {
@@ -266,12 +303,13 @@ function jobReachedTerminalStatus(jobs) {
 async function loadJobs(shouldRender = true) {
   if (!window.akirsApi?.fetchJobs) return;
   try {
-    state.jobs = await window.akirsApi.fetchJobs();
+    const jobs = await window.akirsApi.fetchJobs();
+    state.jobs = jobs.filter(jobBelongsToCurrentUser);
     if (!state.currentJob && state.jobs.length) {
       state.currentJob = state.jobs[0];
     } else if (state.currentJob) {
       const fresh = state.jobs.find((job) => job.job_id === state.currentJob.job_id);
-      if (fresh) state.currentJob = fresh;
+      state.currentJob = fresh || null;
     }
   } catch (error) {
     addActivity("Jobs", "Warning", `Could not load scraper jobs: ${error.message}`);
@@ -316,8 +354,9 @@ function render() {
   setActiveNav(activeRoute);
   const dataRoutes = ["dashboard", "results", "review", "taxable", "analytics"];
   const banner = dataRoutes.includes(activeRoute) ? dataBanner() : "";
+  const authHadFocus = authRoot?.contains(document.activeElement);
   app.innerHTML = banner + (pages[route] || renderDashboard)();
-  app.focus({ preventScroll: true });
+  if (!authHadFocus) app.focus({ preventScroll: true });
   renderAuthPanel();
   updateAuthChrome();
   updateTopbarStatus();
@@ -396,6 +435,8 @@ function renderAuthPanel() {
 
     panel.querySelector("#sign-out")?.addEventListener("click", signOut);
   } else {
+    if (panel.contains(document.activeElement) && panel.querySelector("#panel-login-form")) return;
+
     panel.innerHTML = `
       <form id="panel-login-form" class="login-card" style="max-width:320px; padding:12px;">
         <div class="login-card__intro login-card__intro--compact">
@@ -434,8 +475,16 @@ function renderAuthOverlay(message = "") {
     return;
   }
 
+  const existingForm = authRoot.querySelector("#login-form");
+  const existingGate = authRoot.querySelector(".auth-gate");
+  if (existingGate && existingGate.dataset.message === message) return;
+
+  const activeFieldName = existingForm?.contains(document.activeElement) ? document.activeElement.name : "";
+  const usernameValue = existingForm?.elements.username?.value || "";
+  const passwordValue = existingForm?.elements.password?.value || "";
+
   authRoot.innerHTML = `
-    <div class="auth-gate" role="dialog" aria-modal="true" aria-label="Sign in">
+    <div class="auth-gate" role="dialog" aria-modal="true" aria-label="Sign in" data-message="${escapeHtml(message)}">
       <form id="login-form" class="login-card">
         <div class="login-card__intro">
           <div class="login-card__mark">${icon("lock")}</div>
@@ -447,11 +496,11 @@ function renderAuthOverlay(message = "") {
         </div>
         <label>
            <span class="label">Username</span>
-           <input name="username" type="text" autocomplete="username" required />
+           <input name="username" type="text" autocomplete="username" value="${escapeHtml(usernameValue)}" required />
         </label>
         <label>
            <span class="label">Password</span>
-           <input name="password" type="password" autocomplete="current-password" required />
+           <input name="password" type="password" autocomplete="current-password" value="${escapeHtml(passwordValue)}" required />
         </label>
         <p class="login-card__hint">Local demo account: <strong>user1</strong> / <strong>user1</strong></p>
         ${message ? `<p class="form-error">${escapeHtml(message)}</p>` : ""}
@@ -460,7 +509,9 @@ function renderAuthOverlay(message = "") {
     </div>
   `;
 
-  authRoot.querySelector("#login-form")?.addEventListener("submit", login);
+  const form = authRoot.querySelector("#login-form");
+  form?.addEventListener("submit", login);
+  if (activeFieldName) form?.elements[activeFieldName]?.focus();
 }
 
 function pageHeader(title, subtitle, actions = "") {
@@ -741,6 +792,12 @@ uniform vec2 u_resolution;
 uniform vec2 u_mouse;
 varying vec2 v_texCoord;
 
+float hash21(vec2 p) {
+  p = fract(p * vec2(123.34, 456.21));
+  p += dot(p, p + 45.32);
+  return fract(p.x * p.y);
+}
+
 float grid(vec2 uv, float res) {
   vec2 grid = fract(uv * res);
   return 1.0 - smoothstep(0.0, 0.05, min(grid.x, grid.y));
@@ -770,6 +827,16 @@ void main() {
     float blink = step(0.5, sin(u_time * 10.0 + noise));
     color += vec3(0.0, 1.0, 0.4) * blink;
   }
+  vec2 blip_grid = vec2(18.0, 10.0);
+  vec2 blip_cell = floor(uv * blip_grid);
+  vec2 blip_local = fract(uv * blip_grid);
+  float blip_tick = floor(u_time * 1.7);
+  float blip_seed = hash21(blip_cell + blip_tick);
+  vec2 blip_pos = vec2(hash21(blip_cell + blip_tick + 13.1), hash21(blip_cell + blip_tick + 71.7));
+  float blip_dist = length(blip_local - blip_pos);
+  float blip = (1.0 - smoothstep(0.02, 0.085, blip_dist)) * step(0.82, blip_seed);
+  float blip_flash = 0.45 + 0.55 * sin(u_time * 8.0 + blip_seed * 6.28318);
+  color += vec3(0.25, 1.0, 0.52) * blip * blip_flash * (1.0 - smoothstep(0.52, 0.85, dist));
   color *= 1.0 - smoothstep(0.4, 1.2, dist);
   gl_FragColor = vec4(color, 1.0);
 }`;
@@ -863,6 +930,15 @@ function inputField(label, value, name = "") {
     <label>
       <span class="label">${label}</span>
       <input type="text" value="${escapeHtml(value)}" ${name ? `name="${name}"` : ""} />
+    </label>
+  `;
+}
+
+function textAreaField(label, value, name = "", rows = 6) {
+  return `
+    <label>
+      <span class="label">${label}</span>
+      <textarea ${name ? `name="${name}"` : ""} rows="${rows}">${escapeHtml(value)}</textarea>
     </label>
   `;
 }
@@ -1033,6 +1109,7 @@ function renderSettings() {
           <form class="config-form">
             ${selectField("Default Platform", ["Facebook", "Instagram", "LinkedIn", "X/Twitter", "TikTok"])}
             ${inputField("Max Leads Per Job", "5000")}
+            ${textAreaField("Search Keywords", state.scraperKeywords, "scraper_keywords", 9)}
           </form>
         </section>
         <section class="panel span-6">
@@ -1152,9 +1229,14 @@ function resultsTable(rows) {
                 const emails = profile.emails || [];
                 const phones = profile.phones || [];
                 const sources = profile.sources || [];
+                const website = profile.website && profile.website !== profile.fbUrl ? profile.website : "";
                 return `
                 <tr data-profile="${escapeHtml(`${profile.name} ${profile.platform} ${profile.location} ${profile.contact}`.toLowerCase())}">
-                  <td><strong>${escapeHtml(profile.name)}</strong><small>${escapeHtml(profile.fbUrl || "")}</small></td>
+                  <td>
+                    <strong>${escapeHtml(profile.name)}</strong>
+                    ${profile.fbUrl ? `<small><a href="${escapeHtml(profile.fbUrl)}" target="_blank" rel="noopener">Facebook page</a></small>` : ""}
+                    ${website ? `<small><a href="${escapeHtml(website)}" target="_blank" rel="noopener">${escapeHtml(website)}</a></small>` : ""}
+                  </td>
                   <td>${(platforms.length ? platforms : [profile.platform]).map((p) => `<span class="badge">${escapeHtml(p)}</span>`).join(" ")}</td>
                   <td>${escapeHtml(profile.location)}</td>
                   <td><strong>${escapeHtml(profile.contact)}</strong>${emails[0] && phones[0] ? `<small>${escapeHtml(phones[0])}</small>` : ""}</td>
@@ -1306,7 +1388,11 @@ async function login(event) {
       }),
     });
     state.user = user;
+    state.scraperKeywords = readStoredKeywords(user);
+    state.jobs = [];
+    state.currentJob = null;
     window.localStorage.setItem("akirs.user", JSON.stringify(user));
+    await loadJobs(false);
     render();
   } catch (error) {
     renderAuthOverlay(error.message || "Sign in failed");
@@ -1317,6 +1403,9 @@ async function login(event) {
 
 function signOut() {
   state.user = null;
+  state.jobs = [];
+  state.currentJob = null;
+  state.scraperKeywords = DEFAULT_SCRAPER_KEYWORDS;
   window.localStorage.removeItem("akirs.user");
   render();
 }
@@ -1338,6 +1427,10 @@ async function startScraping() {
         country: formData.get("country") || defaultConfig.country,
         locations: city ? [city] : undefined,
         categories: searchType && searchType !== "All" ? [searchType] : undefined,
+        user_keywords: parseKeywords(state.scraperKeywords),
+        operator_user_id: state.user?.id,
+        operator_username: state.user?.username,
+        facebook_user_data_dir: `.akirs-browser/facebook-${accountSlug()}`,
       }),
     });
     state.currentJob = job;
@@ -1433,14 +1526,12 @@ function evidenceCard(iconName, title, body, modifier) {
 function showToast(message) {
   const toast = document.createElement("div");
   toast.className = "toast";
-  toast.textContent = message;
+  toast.innerHTML = `<span>${escapeHtml(message)}</span><button class="icon-button" type="button" aria-label="Dismiss notification">${icon("close")}</button>`;
+  toast.querySelector("button")?.addEventListener("click", () => toast.remove());
   document.body.append(toast);
-  window.setTimeout(() => toast.remove(), 2600);
 }
 
 function bindPageEvents(route) {
-  drawerRoot.innerHTML = "";
-
   document.querySelectorAll("[data-open-drawer]").forEach((button) => {
     button.onclick = () => renderDrawer(button.dataset.openDrawer);
   });
@@ -1473,6 +1564,14 @@ function bindPageEvents(route) {
 
     threadCount.oninput = updateThreadCount;
     updateThreadCount();
+  }
+
+  const keywordsInput = document.querySelector("textarea[name='scraper_keywords']");
+  if (keywordsInput) {
+    keywordsInput.oninput = () => {
+      state.scraperKeywords = keywordsInput.value;
+      writeStoredKeywords(state.scraperKeywords);
+    };
   }
 
   document.querySelector("#start-scraping")?.addEventListener("click", startScraping);
