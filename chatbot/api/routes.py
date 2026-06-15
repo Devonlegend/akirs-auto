@@ -50,8 +50,22 @@ def _get_pipeline() -> RAGPipeline:
 
 
 async def prepare_pipeline() -> None:
-    """Ensure the shared pipeline's LLM backend is ready (called at app startup)."""
+    """Ensure the shared pipeline's LLM backend is ready (called at app startup).
+
+    Also auto-ingests the AKIRS tax knowledge base so the assistant has grounded
+    content to retrieve. KB ingest failures are non-fatal — the backend still
+    starts and the chatbot falls back to its general conversational mode.
+    """
     await _get_pipeline().prepare()
+
+    try:
+        from chatbot.knowledge.loader import ingest_knowledge_base
+
+        await ingest_knowledge_base(_get_ingestor())
+    except Exception:
+        logger.exception(
+            "AKIRS knowledge-base auto-ingest failed (continuing without it)."
+        )
 
 
 async def shutdown_pipeline() -> None:

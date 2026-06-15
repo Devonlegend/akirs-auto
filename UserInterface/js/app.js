@@ -342,6 +342,7 @@ function render() {
     results: renderResults,
     review: renderReview,
     taxable: renderTaxable,
+    assistant: renderAssistant,
     analytics: renderAnalytics,
     settings: renderSettings,
   };
@@ -1112,6 +1113,39 @@ function chartPanel(title, rows) {
   `;
 }
 
+function renderAssistant() {
+  return `
+    <section class="page">
+      ${pageHeader(
+        "AKIRS Assistant",
+        "Ask about PAYE, Withholding Tax, Direct Assessment, Capital Gains, Pool Betting & Gaming, AISTIN registration, annual returns, and TCC validation.",
+      )}
+      <div class="dashboard-grid">
+        <section class="panel span-8 assistant-intro">
+          <div class="panel__header"><h2>${icon("forum")} Talk to the AKIRS Assistant</h2></div>
+          <p class="muted">
+            The AKIRS Assistant answers from the official AKIRS tax knowledge base.
+            It can explain your Akwa Ibom State tax obligations, walk you through
+            filing procedures, and point you to the right AKIRS service. For binding
+            determinations, always confirm with AKIRS directly.
+          </p>
+          <button class="button button--primary" type="button" data-open-assistant>
+            ${icon("forum")} Open AKIRS Assistant
+          </button>
+        </section>
+        <section class="panel span-4">
+          <div class="panel__header"><h2>${icon("help")} Try asking</h2></div>
+          <div class="list-stack">
+            ${quickAction("What is PAYE?", "How Pay-As-You-Earn works for employers", "payments", "#/assistant")}
+            ${quickAction("How do I get an AISTIN?", "Register for a state Taxpayer ID", "badge", "#/assistant")}
+            ${quickAction("How do I validate a TCC?", "Confirm a Tax Clearance Certificate", "verified", "#/assistant")}
+          </div>
+        </section>
+      </div>
+    </section>
+  `;
+}
+
 function renderSettings() {
   return `
     <section class="page">
@@ -1630,6 +1664,9 @@ function bindPageEvents(route) {
     };
   });
   document.querySelector("[data-refresh-data]")?.addEventListener("click", () => loadData());
+  document.querySelector("[data-open-assistant]")?.addEventListener("click", () => {
+    window.akirsChat?.open?.();
+  });
   document.querySelector("[data-new-scrape]")?.addEventListener("click", () => {
     state.currentJob = null;
     render();

@@ -63,6 +63,19 @@ async function deleteJob(jobId) {
   return request(`/jobs/${jobId}`, { method: "DELETE" });
 }
 
+// POST /chatbot/chat -> { answer, sources, collection, retrieved_count, elapsed_ms }
+async function sendChat(question, collection = "akirs_tax") {
+  return request("/chatbot/chat", {
+    method: "POST",
+    body: JSON.stringify({ question, collection }),
+  });
+}
+
+// GET /chatbot/health -> { status, llm_ok, model, collections, collection_counts }
+async function chatbotHealth() {
+  return request("/chatbot/health");
+}
+
 window.akirsApi = {
   API_BASE,
   fetchAdvertisers,
@@ -73,5 +86,7 @@ window.akirsApi = {
   resumeJob,
   stopJob,
   deleteJob,
+  sendChat,
+  chatbotHealth,
 };
 })();

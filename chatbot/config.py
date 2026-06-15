@@ -87,6 +87,16 @@ class ChatbotSettings(BaseSettings):
         description="Minimum chunk score (1 - cosine_distance) to count as relevant context.",
     )
 
+    # -- Knowledge base -----------------------------------------------------
+    knowledge_collection: str = Field(
+        default="akirs_tax",
+        description="Collection name for the AKIRS tax knowledge base.",
+    )
+    knowledge_dir: Path = Field(
+        default=Path("chatbot/knowledge"),
+        description="Folder of markdown files auto-ingested into the KB at startup.",
+    )
+
     # -- Scraper DB ---------------------------------------------------------
     scraper_db_url: str = Field(
         default="sqlite+aiosqlite:///akirs.db",
