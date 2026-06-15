@@ -30,7 +30,7 @@ class AdCard:
         await self.button.click()
         try:
             await self.page.wait_for_selector("div[role='dialog']", timeout=5000)
-            await self.page.wait_for_timeout(500)
+            await self.page.wait_for_timeout(3000)
         except Exception as e:
             logger.warning(f"Dialog wait failed for ad {self.index}: {e}")
 

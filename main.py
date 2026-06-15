@@ -122,6 +122,7 @@ async def run_once(args: argparse.Namespace) -> None:
         job_id = job.id
 
     new_advertiser_ids: list[int] = []
+    all_advertiser_ids: set[int] = set()
 
     async with launch_browser(headless=args.headless) as (_b, _c, page):
         scraper = FacebookAdsScraper(page)
@@ -154,6 +155,7 @@ async def run_once(args: argparse.Namespace) -> None:
                     adv, created = await adv_repo.upsert(ad["advertiser_url"], ad.get("advertiser_name"))
                     await ad_repo.add(adv.id, kr.id, ad.get("fb_ad_id"), ad)
                     await link_repo.add_many(adv.id, ad.get("social_links", []))
+                    all_advertiser_ids.add(adv.id)
                     if created:
                         new_advertiser_ids.append(adv.id)
                     saved += 1
@@ -169,7 +171,7 @@ async def run_once(args: argparse.Namespace) -> None:
 
     # Phase 2: inline recon (if requested)
     if args.recon:
-        await _run_recon(new_advertiser_ids, factory)
+        await _run_recon(list(all_advertiser_ids), factory)
         await _export_csv(factory)
 
 

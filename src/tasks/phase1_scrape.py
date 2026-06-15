@@ -61,6 +61,7 @@ async def _run(job_id: int, params: dict[str, Any], celery_task_id: str | None) 
         await session.commit()
 
     new_advertiser_ids: list[int] = []
+    all_advertiser_ids: set[int] = set()
     total_ads = 0
     error_msg: str | None = None
     final_status: str | None = None
@@ -111,6 +112,7 @@ async def _run(job_id: int, params: dict[str, Any], celery_task_id: str | None) 
                         if not fb_url:
                             continue
                         adv, created = await adv_repo.upsert(fb_url=fb_url, name=ad.get("advertiser_name"))
+                        all_advertiser_ids.add(adv.id)
                         if created:
                             new_advertiser_ids.append(adv.id)
                         await ad_repo.add(
@@ -136,8 +138,8 @@ async def _run(job_id: int, params: dict[str, Any], celery_task_id: str | None) 
             await JobRepository(session).mark_completed(job_id, error=error_msg)
             await session.commit()
 
-    if run_recon and new_advertiser_ids and not error_msg and final_status != "stopped":
-        _dispatch_recon(job_id, new_advertiser_ids)
+    if run_recon and all_advertiser_ids and not error_msg and final_status != "stopped":
+        _dispatch_recon(job_id, list(all_advertiser_ids))
 
     return {
         "job_id": job_id,
