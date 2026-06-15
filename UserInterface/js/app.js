@@ -5,6 +5,7 @@ function resolveApiBase() {
 }
 
 const APP_API_BASE = resolveApiBase();
+
 const defaultConfig = {
   country: "Nigeria",
   state: "Akwa Ibom",
@@ -117,6 +118,8 @@ const activityLog = [
   ["12:20:08", "Queue", "Warning", "18 leads require duplicate checks."],
   ["12:20:55", "Outreach", "Success", "Contact list prepared for tax revenue follow-up."],
 ];
+
+let state = { isLoading: false, jobs: [], currentJob: null, user: null, profiles: [], taxable: [], activityLog: activityLog };
 
 const app = document.querySelector("#app");
 
@@ -308,8 +311,10 @@ async function loadData() {
   render();
   try {
     const raw = await window.akirsApi.fetchAdvertisers();
-    profiles = raw.map(mapAdvertiser);
-    dataState = profiles.length ? "ready" : "empty";
+    state.profiles = raw.map(mapAdvertiser);
+    const taxableRaw = await window.akirsApi.fetchTaxableEntities();
+    state.taxable = taxableRaw.map(mapAdvertiser);
+    dataState = state.profiles.length ? "ready" : "empty";
   } catch (error) {
     dataError = error.message;
     dataState = "error";
@@ -364,7 +369,6 @@ function render() {
     results: renderResults,
     review: renderReview,
     taxable: renderTaxable,
-    assistant: renderAssistant,
     analytics: renderAnalytics,
     settings: renderSettings,
   };
