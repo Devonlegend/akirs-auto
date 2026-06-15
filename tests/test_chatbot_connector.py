@@ -9,7 +9,7 @@ from __future__ import annotations
 from datetime import datetime
 from types import SimpleNamespace
 
-from chatbot.connectors.scraper_connector import build_advertiser_text
+from src.chatbot.connectors.scraper_connector import build_advertiser_text
 
 
 def _make_advertiser(**overrides):

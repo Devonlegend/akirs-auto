@@ -75,4 +75,3 @@ window.akirsApi = {
   deleteJob,
 };
 })();
->>>>>>> e68ad67 (Remove chat UI and complete auth modal)

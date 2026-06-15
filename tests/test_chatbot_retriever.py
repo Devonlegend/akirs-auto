@@ -5,8 +5,8 @@ No embedding model or vector store is loaded (fakes are injected).
 
 from __future__ import annotations
 
-from chatbot.retrieval.retriever import Retriever, format_context
-from chatbot.vector_store.base import StoredChunk
+from src.chatbot.retrieval.retriever import Retriever, format_context
+from src.chatbot.vector_store.base import StoredChunk
 
 
 def _chunk(idx: int, text: str) -> StoredChunk:

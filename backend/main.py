@@ -19,6 +19,7 @@ from backend.database import AsyncSessionLocal, Base, engine
 from backend.models import users  # noqa: F401 - register auth tables with SQLAlchemy metadata
 from backend.routers import auth, scraped, taxation
 from backend.services.auth_queries import seed_default_users
+
 from api.routes import advertisers as api_advertisers
 from api.routes import geography as api_geography
 from api.routes import jobs as api_jobs
@@ -49,17 +50,18 @@ async def lifespan(app: FastAPI):
         await seed_default_users(session)
 
     # Ensure Ollama is running with the configured model loaded.
-    try:
-        await prepare_pipeline()
-    except Exception:
-        logging.getLogger("backend").exception(
-            "Ollama bootstrap failed at startup — chat queries may fail until it's available."
-        )
+    # try:
+    #     await prepare_pipeline()
+    # except Exception:
+    #     logging.getLogger("backend").exception(
+    #         "Ollama bootstrap failed at startup — chat queries may fail until it's available."
+    #     )
 
     try:
         yield
     finally:
-        await shutdown_pipeline()
+        pass
+        # await shutdown_pipeline()
 
 
 app = FastAPI(title="Akirs Auto Backend", lifespan=lifespan)

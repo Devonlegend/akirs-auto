@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from chatbot.nlp.chunker import Chunk, TextChunker
-from chatbot.nlp.cleaner import clean_text, extract_sentences, is_noise
+from src.chatbot.nlp.chunker import Chunk, TextChunker
+from src.chatbot.nlp.cleaner import clean_text, extract_sentences, is_noise
 
 
 # ------------------------------------------------------------------

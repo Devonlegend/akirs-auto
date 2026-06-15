@@ -7,14 +7,14 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy import delete, desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.deps import db_session
-from api.schemas import JobCreatedResponse, JobStatusResponse, ScrapeJobRequest
+from src.api.deps import db_session
+from src.api.schemas import JobCreatedResponse, JobStatusResponse, ScrapeJobRequest
 from src.config.settings import get_settings
 from src.db.models import Ad, Advertiser, KeywordRun, ScrapeJob
 from src.db.repositories import JobRepository
 from src.scrapers.browser import launch_browser
-from tasks.celery_app import celery_app
-from tasks.phase1_scrape import scrape_facebook_ads_job
+from src.tasks.celery_app import celery_app
+from src.tasks.phase1_scrape import scrape_facebook_ads_job
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/jobs", tags=["jobs"])

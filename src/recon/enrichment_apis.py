@@ -15,8 +15,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config.settings import get_settings
 from src.db.models import Advertiser, SocialLink
-from recon.base import ReconFindingData, ReconSource
-from recon.extractors import extract_domain
+from src.recon.base import ReconFindingData, ReconSource
+from src.recon.extractors import extract_domain
 
 logger = logging.getLogger(__name__)
 

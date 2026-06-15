@@ -8,7 +8,7 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from chatbot.llm.ollama_backend import OllamaBackend
+from src.chatbot.llm.ollama_backend import OllamaBackend
 
 
 def _backend_with_handler(handler, **kwargs) -> OllamaBackend:

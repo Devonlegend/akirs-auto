@@ -26,7 +26,7 @@ async def _run_recon(advertiser_id: int) -> dict[str, Any]:
     # being wired up (it's filled in by task #6).
     from backend.database import AsyncSessionLocal
     from src.db.repositories import AdvertiserRepository, ReconRepository
-    from recon.registry import build_default_coordinator
+    from src.recon.registry import build_default_coordinator
 
     async with AsyncSessionLocal() as session:
         advertiser = await AdvertiserRepository(session).get(advertiser_id)

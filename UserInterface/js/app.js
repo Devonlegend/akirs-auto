@@ -112,7 +112,7 @@ const profiles = [
 
 const activityLog = [
   ["12:18:44", "Browser", "Success", "Hidden browser launched with residential proxy pool."],
-  ["12:19:03", "Search", "Running", `Query: ${mockDefaults.query} near ${mockDefaults.city}, ${mockDefaults.state} with contact links.`],
+  ["12:19:03", "Search", "Running", `Query: restaurants near Uyo, Akwa Ibom with contact links.`],
   ["12:19:41", "Lead", "Success", "Collected Ibom Fresh Foods with website and email."],
   ["12:20:08", "Queue", "Warning", "18 leads require duplicate checks."],
   ["12:20:55", "Outreach", "Success", "Contact list prepared for tax revenue follow-up."],

@@ -18,8 +18,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.db.models import Advertiser, SocialLink, SocialProfile
-from recon.base import ReconFindingData, ReconSource
-from recon.extractors import extract_contact_from_bio
+from src.recon.base import ReconFindingData, ReconSource
+from src.recon.extractors import extract_contact_from_bio
 from src.scrapers.browser import launch_browser
 
 logger = logging.getLogger(__name__)

@@ -2,7 +2,7 @@
 
 from fastapi import FastAPI
 
-from api.routes import advertisers, geography, health, jobs
+from src.api.routes import advertisers, geography, health, jobs
 
 
 def create_app() -> FastAPI:

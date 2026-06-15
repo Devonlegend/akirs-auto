@@ -1,4 +1,4 @@
-from keywords import expand
+from src.keywords import expand
 from src.keywords.generator import KeywordRunSpec
 
 

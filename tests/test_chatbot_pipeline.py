@@ -5,11 +5,11 @@ Uses in-process fakes (no Ollama, no ChromaDB, no network).
 
 from __future__ import annotations
 
-from chatbot.config import settings
-from chatbot.llm.base import LLMBackend, LLMResponse
-from chatbot.rag.pipeline import RAGPipeline
-from chatbot.rag.prompt_builder import DEFAULT_SYSTEM_PROMPT, GENERAL_SYSTEM_PROMPT
-from chatbot.vector_store.base import StoredChunk
+from src.chatbot.config import settings
+from src.chatbot.llm.base import LLMBackend, LLMResponse
+from src.chatbot.rag.pipeline import RAGPipeline
+from src.chatbot.rag.prompt_builder import DEFAULT_SYSTEM_PROMPT, GENERAL_SYSTEM_PROMPT
+from src.chatbot.vector_store.base import StoredChunk
 
 
 class FakeRetriever:
