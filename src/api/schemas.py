@@ -23,9 +23,18 @@ class ScrapeJobRequest(BaseModel):
     keyword_cap: int = Field(default=50, ge=1, le=2000)
     run_recon: bool = Field(default=True)
     country: str | None = Field(default=None, description="FB Ads country filter; defaults to settings value")
-    facebook_user_data_dir: str | None = Field(
+    facebook_email: str | None = Field(
         default=None,
-        description="Persistent Playwright profile used after the manual Facebook login window closes.",
+        description=(
+            "Optional Facebook login email. Scraping runs anonymously against the "
+            "public Ads Library by default; credentials, when supplied, are used "
+            "ephemerally for a single job (a scripted login at scrape time) and are "
+            "never persisted or returned in job status responses."
+        ),
+    )
+    facebook_password: str | None = Field(
+        default=None,
+        description="Optional Facebook login password. Ephemeral, per-job; never persisted or returned.",
     )
     operator_user_id: int | None = Field(
         default=None,

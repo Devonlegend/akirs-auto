@@ -27,17 +27,27 @@ uv sync
 cp .env.example .env
 # edit .env
 
-# 3. Run a single-shot scrape + recon
-.venv/bin/python main.py --recon --headless --target 5 --cap 4
-```
+## Running Independent Components via uv
 
+You can run the project's individual components directly using `uv`:
+
+### 1. The Scraper
+Run a single-shot scrape + recon job:
+```bash
+uv run python main.py --recon --headless --target 5 --cap 4
+```
 Results land in `output/akirs_enriched_<timestamp>.csv`.
 
-For the full server experience (FastAPI + Celery workers):
-
+### 2. The Web Server
+To launch the FastAPI backend server:
 ```bash
-.venv/bin/uvicorn akirs.api.app:app --reload
-.venv/bin/celery -A akirs.tasks.celery_app worker --loglevel=info
+uv run uvicorn backend.main:app --reload
+```
+
+### 3. The Chatbot
+To launch the interactive Chatbot CLI:
+```bash
+uv run python -m chatbot
 ```
 
 ---

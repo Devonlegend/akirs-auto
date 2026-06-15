@@ -113,13 +113,6 @@ function parseKeywords(value) {
     .filter(Boolean);
 }
 
-function accountSlug(user = state.user) {
-  return String(user?.username || user?.id || "guest")
-    .toLowerCase()
-    .replace(/[^a-z0-9_-]+/g, "-")
-    .replace(/^-+|-+$/g, "") || "guest";
-}
-
 function jobBelongsToCurrentUser(job) {
   if (!state.user) return false;
   return String(job?.params?.operator_user_id || "") === String(state.user.id);
@@ -574,7 +567,7 @@ function renderDashboard() {
         <section class="panel span-4">
           <div class="panel__header"><h2>${icon("bolt")} Quick Actions</h2></div>
           <div class="list-stack">
-            ${quickAction("Start new scrape", "Open login browser, then queue scraper job", "play_circle", "#/scraper")}
+            ${quickAction("Start new scrape", "Queue an anonymous scrape — Facebook login optional", "play_circle", "#/scraper")}
             ${quickAction("Review pending leads", "Verify contact details before outreach", "rule", "#/review")}
             ${quickAction("Contact taxable businesses", "Open verified contacts ready for tax payment follow-up", "contact_mail", "#/taxable")}
           </div>
@@ -607,7 +600,7 @@ function renderScraper() {
     <section class="page">
       ${pageHeader(
         "Scraper Control Center",
-        "Configure platform searches, open the Facebook login browser, then queue scraping after that browser closes.",
+        "Configure platform searches and queue a scrape. Scraping runs anonymously against the public Facebook Ads Library — Facebook login is optional.",
       )}
 
       <div class="scraper-workspace">
@@ -621,6 +614,23 @@ function renderScraper() {
               ${staticField("Target State", defaultConfig.state)}
               ${inputField("City", defaultConfig.city, "city")}
             </div>
+            <details class="fb-login-optional">
+              <summary>${icon("lock_open")} Facebook login (optional)</summary>
+              <p class="muted fb-login-optional__hint">
+                Leave blank to scrape anonymously. If provided, these are used once for
+                this job to attempt a login and are never stored or returned.
+              </p>
+              <div class="form-grid">
+                <label>
+                  <span class="label">Facebook Email</span>
+                  <input type="email" name="facebook_email" autocomplete="off" placeholder="optional@example.com" />
+                </label>
+                <label>
+                  <span class="label">Facebook Password</span>
+                  <input type="password" name="facebook_password" autocomplete="new-password" placeholder="optional" />
+                </label>
+              </div>
+            </details>
             <label class="range-field">
               <span class="range-field__top">
                 <span class="label">Thread Count</span>
@@ -1420,11 +1430,24 @@ async function startScraping() {
   const city = String(formData.get("city") || defaultConfig.city).trim();
   const searchType = String(formData.get("search_type") || "All").trim();
 
+  // Optional Facebook credentials are accepted ephemerally for a single job and
+  // are never persisted. Scraping runs anonymously against the public Ads
+  // Library when they are absent.
+  const fbEmail = String(formData.get("facebook_email") || "").trim();
+  const fbPassword = String(formData.get("facebook_password") || "").trim();
+  const usingCredentials = Boolean(fbEmail && fbPassword);
+
   if (startButton) startButton.disabled = true;
-  addActivity("Browser", "Running", "Opening Facebook login browser. Log in, then close that browser to start scraping.");
+  addActivity(
+    "Scraper",
+    "Running",
+    usingCredentials
+      ? "Queuing scrape with the provided Facebook login (used once, not stored)."
+      : "Queuing anonymous scrape against the public Facebook Ads Library.",
+  );
 
   try {
-    const job = await apiFetch("/jobs/scrape/after-login", {
+    const job = await apiFetch("/jobs/scrape", {
       method: "POST",
       body: JSON.stringify({
         country: formData.get("country") || defaultConfig.country,
@@ -1433,12 +1456,13 @@ async function startScraping() {
         user_keywords: parseKeywords(state.scraperKeywords),
         operator_user_id: state.user?.id,
         operator_username: state.user?.username,
-        facebook_user_data_dir: `.akirs-browser/facebook-${accountSlug()}`,
+        facebook_email: usingCredentials ? fbEmail : undefined,
+        facebook_password: usingCredentials ? fbPassword : undefined,
       }),
     });
     state.currentJob = job;
     await loadJobs(false);
-    addActivity("Scraper", "Success", `Login browser closed. Scrape job ${job.job_id} queued.`);
+    addActivity("Scraper", "Success", `Scrape job ${job.job_id} queued.`);
   } catch (error) {
     addActivity("Scraper", "Warning", `Could not start scrape: ${error.message}`);
   } finally {
