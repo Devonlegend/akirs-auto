@@ -43,7 +43,10 @@ async def _run(job_id: int, params: dict[str, Any], celery_task_id: str | None) 
     cap = int(params.get("keyword_cap", settings.keyword_cap_default))
     run_recon = bool(params.get("run_recon", True))
     country = params.get("country", settings.fb_ads_country)
-    user_data_dir = params.get("facebook_user_data_dir") or str(settings.fb_ads_user_data_dir)
+    # Optional, ephemeral Facebook credentials. Scraping runs anonymously against
+    # the public Ads Library unless both are supplied; they are never persisted.
+    facebook_email = params.get("facebook_email") or None
+    facebook_password = params.get("facebook_password") or None
     user_keywords = params.get("user_keywords") or [
         item.strip() for item in settings.scraper_keywords.split(",") if item.strip()
     ]
@@ -69,8 +72,10 @@ async def _run(job_id: int, params: dict[str, Any], celery_task_id: str | None) 
     try:
         async with launch_browser(
             headless=settings.fb_ads_headless,
-            user_data_dir=user_data_dir,
         ) as (_browser, _context, page):
+            if facebook_email and facebook_password:
+                await _attempt_facebook_login(page, facebook_email, facebook_password)
+
             scraper = FacebookAdsScraper(page)
             await scraper.setup(country=country)
 
@@ -148,6 +153,33 @@ async def _run(job_id: int, params: dict[str, Any], celery_task_id: str | None) 
         "new_advertisers": len(new_advertiser_ids),
         "error": error_msg,
     }
+
+
+async def _attempt_facebook_login(page, email: str, password: str) -> None:
+    """Best-effort scripted Facebook login using ephemeral, per-job credentials.
+
+    Scraping targets the public Ads Library and works without authentication, so
+    a failed login here is non-fatal — we log and continue anonymously. The
+    credentials are used only for this browser session and are never persisted.
+    Facebook 2FA / checkpoints can still block scripted logins; that is expected.
+    """
+    try:
+        await page.goto("https://www.facebook.com/login", wait_until="domcontentloaded")
+        await page.fill("input[name='email']", email, timeout=8000)
+        await page.fill("input[name='pass']", password, timeout=8000)
+        await page.click("button[name='login']", timeout=8000)
+        await page.wait_for_load_state("networkidle", timeout=15000)
+
+        current_url = page.url or ""
+        if "login" in current_url or "checkpoint" in current_url:
+            logger.warning(
+                "Phase 1: Facebook login did not complete (checkpoint/2FA or bad "
+                "credentials) — continuing anonymously."
+            )
+        else:
+            logger.info("Phase 1: Facebook login succeeded for this job session.")
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Phase 1: Facebook login attempt failed (%s) — continuing anonymously.", exc)
 
 
 async def _wait_until_job_can_continue(job_id: int) -> bool:

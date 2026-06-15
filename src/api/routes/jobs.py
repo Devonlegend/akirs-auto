@@ -12,12 +12,16 @@ from src.api.schemas import JobCreatedResponse, JobStatusResponse, ScrapeJobRequ
 from src.config.settings import get_settings
 from src.db.models import Ad, Advertiser, KeywordRun, ScrapeJob
 from src.db.repositories import JobRepository
-from src.scrapers.browser import launch_browser
 from src.tasks.celery_app import celery_app
 from src.tasks.phase1_scrape import scrape_facebook_ads_job
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/jobs", tags=["jobs"])
+
+# Param keys holding Facebook login credentials. These are accepted for a single
+# job, forwarded only to the running scrape task, and never written to the job
+# row or returned in any API response. Scraping is anonymous unless supplied.
+_SENSITIVE_PARAM_KEYS = ("facebook_email", "facebook_password")
 
 
 @router.post("/scrape", response_model=JobCreatedResponse)
@@ -36,20 +40,28 @@ async def create_scrape_job_after_manual_login(
     background_tasks: BackgroundTasks,
     session: AsyncSession = Depends(db_session),
 ) -> JobCreatedResponse:
+    """Back-compat alias for the old manual-login flow.
+
+    The scraper no longer opens a server-side login browser (that can't work in a
+    deployed, headless environment). Scraping is anonymous by default; optional
+    Facebook credentials on the request body are used ephemerally at scrape time.
+    This endpoint now behaves identically to ``/scrape`` and never blocks.
+    """
     params = _scrape_params(body)
-    await _wait_for_manual_login(params)
     return await _queue_scrape_job(params, session, background_tasks)
 
 
 def _scrape_params(body: ScrapeJobRequest) -> dict:
     settings = get_settings()
     params = body.model_dump(exclude_none=False)
-    params["facebook_user_data_dir"] = params.get("facebook_user_data_dir") or str(
-        settings.fb_ads_user_data_dir
-    )
     if not params.get("user_keywords"):
         params["user_keywords"] = _parse_csv(settings.scraper_keywords)
     return params
+
+
+def _redact_params(params: dict) -> dict:
+    """Return a copy of params safe to persist / return — credentials stripped."""
+    return {k: v for k, v in params.items() if k not in _SENSITIVE_PARAM_KEYS}
 
 
 def _parse_csv(value: str | None) -> list[str]:
@@ -61,8 +73,11 @@ async def _queue_scrape_job(
     session: AsyncSession,
     background_tasks: BackgroundTasks,
 ) -> JobCreatedResponse:
+    # The job row stores only redacted params; the live task receives the full
+    # params (including any ephemeral credentials) but never writes them back.
+    stored_params = _redact_params(params)
     repo = JobRepository(session)
-    job = await repo.create(kind="phase1_scrape", params=params)
+    job = await repo.create(kind="phase1_scrape", params=stored_params)
     await session.commit()
 
     try:
@@ -72,23 +87,6 @@ async def _queue_scrape_job(
         logger.warning("Celery unavailable; running scrape job %s in FastAPI background: %s", job.id, exc)
         background_tasks.add_task(_run_scrape_without_celery, job.id, params)
         return JobCreatedResponse(job_id=job.id, status="queued", celery_task_id=None)
-
-
-async def _wait_for_manual_login(params: dict) -> None:
-    settings = get_settings()
-    user_data_dir = params.get("facebook_user_data_dir") or str(settings.fb_ads_user_data_dir)
-
-    async with launch_browser(headless=False, user_data_dir=user_data_dir) as (_browser, _context, page):
-        await page.goto("https://www.facebook.com/login", wait_until="domcontentloaded")
-        logger.info("Manual Facebook login browser opened. Close it to start scraping.")
-
-        while True:
-            try:
-                if page.is_closed():
-                    return
-                await page.wait_for_timeout(1000)
-            except Exception:
-                return
 
 
 async def _run_scrape_without_celery(job_id: int, params: dict) -> None:
