@@ -1,8 +1,11 @@
 """Shared async Playwright browser helpers."""
 
 from contextlib import asynccontextmanager
+import logging
 from pathlib import Path
 from playwright.async_api import Browser, BrowserContext, Page, async_playwright
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
@@ -63,6 +66,12 @@ async def launch_browser(headless: bool = True, user_data_dir: str | Path | None
         try:
             yield browser, context, page
         finally:
-            await context.close()
+            try:
+                await context.close()
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("Browser context was already closed: %s", exc)
             if browser is not None:
-                await browser.close()
+                try:
+                    await browser.close()
+                except Exception as exc:  # noqa: BLE001
+                    logger.debug("Browser was already closed: %s", exc)

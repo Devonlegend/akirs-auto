@@ -9,123 +9,25 @@ const defaultConfig = {
   country: "Nigeria",
   state: "Akwa Ibom",
   city: "Uyo",
-  query: "restaurant",
 };
 
-const profiles = [
-  {
-    name: "Ibom Fresh Foods",
-    owner: "Daniel Akpan",
-    platform: "Facebook",
-    verified: true,
-    followers: 18420,
-    following: 312,
-    engagement: 86,
-    category: "Local Services",
-    industry: "Restaurant",
-    location: "Uyo, Akwa Ibom",
-    website: "ibomfresh.example",
-    contact: "hello@ibomfresh.example",
-    found: "2026-05-30",
-    reviewer: "Ada M.",
-    status: "Pending Review",
-    risk: 82,
-    relevance: 94,
-  },
-  {
-    name: "Eket Beauty Studio",
-    owner: "Maya Udo",
-    platform: "Instagram",
-    verified: true,
-    followers: 64200,
-    following: 980,
-    engagement: 91,
-    category: "Business Owners",
-    industry: "Beauty",
-    location: "Eket, Akwa Ibom",
-    website: "eketbeauty.example",
-    contact: "+234 802 014 8840",
-    found: "2026-05-29",
-    reviewer: "Chris N.",
-    status: "Ready To Contact",
-    risk: 76,
-    relevance: 97,
-  },
-  {
-    name: "Northline Builders",
-    owner: "Marcus Udofia",
-    platform: "LinkedIn",
-    verified: false,
-    followers: 12880,
-    following: 421,
-    engagement: 73,
-    category: "Companies",
-    industry: "Construction",
-    location: "Ikot Ekpene, Akwa Ibom",
-    website: "northlinebuilders.example",
-    contact: "contact form",
-    found: "2026-05-28",
-    reviewer: "Ada M.",
-    status: "Needs More Information",
-    risk: 69,
-    relevance: 89,
-  },
-  {
-    name: "Spark Auto Mechanics",
-    owner: "Elijah Bassey",
-    platform: "TikTok",
-    verified: false,
-    followers: 39210,
-    following: 205,
-    engagement: 88,
-    category: "Entrepreneurs",
-    industry: "Auto Repair",
-    location: "Uyo, Akwa Ibom",
-    website: "",
-    contact: "DM available",
-    found: "2026-05-27",
-    reviewer: "Nora P.",
-    status: "Rejected",
-    risk: 43,
-    relevance: 78,
-  },
-  {
-    name: "Marina Grill House",
-    owner: "Olivia Etim",
-    platform: "X/Twitter",
-    verified: true,
-    followers: 23100,
-    following: 744,
-    engagement: 80,
-    category: "Business Pages",
-    industry: "Restaurant",
-    location: "Oron, Akwa Ibom",
-    website: "marinagrill.example",
-    contact: "bookings@marinagrill.example",
-    found: "2026-05-26",
-    reviewer: "Chris N.",
-    status: "Ready To Contact",
-    risk: 71,
-    relevance: 92,
-  },
-];
-
-const activityLog = [
-  ["12:18:44", "Browser", "Success", "Hidden browser launched with residential proxy pool."],
-  ["12:19:03", "Search", "Running", `Query: ${mockDefaults.query} near ${mockDefaults.city}, ${mockDefaults.state} with contact links.`],
-  ["12:19:41", "Lead", "Success", "Collected Ibom Fresh Foods with website and email."],
-  ["12:20:08", "Queue", "Warning", "18 leads require duplicate checks."],
-  ["12:20:55", "Outreach", "Success", "Contact list prepared for tax revenue follow-up."],
-];
-
 const app = document.querySelector("#app");
-
-function signOut() {
-  window.localStorage.removeItem("akirs.user");
-  window.location.reload();
-}
 const drawerRoot = document.querySelector("#drawer-root");
 const authRoot = document.querySelector("#auth-root");
+const state = {
+  profiles: [],
+  taxable: [],
+  activityLog: [],
+  jobs: [],
+  currentJob: null,
+  isLoading: false,
+  user: readStoredUser(),
+};
+let dataState = "ready";
+let dataError = null;
+let scraperScannerFrame = null;
+let lastBusinessDataRefresh = 0;
+let jobStatusSnapshot = new Map();
 
 function icon(name) {
   return `<span class="material-symbols-outlined">${name}</span>`;
@@ -151,6 +53,15 @@ function isScraperActive(job = state.currentJob) {
 
 function isJobControllable(job = state.currentJob) {
   return Boolean(job && ["queued", "running", "paused"].includes(job.status));
+}
+
+function jobsForBulkAction(action) {
+  const statusMap = {
+    pause: ["queued", "running"],
+    resume: ["paused"],
+    stop: ["queued", "running", "paused"],
+  };
+  return state.jobs.filter((job) => statusMap[action]?.includes(job.status));
 }
 
 async function apiFetch(path, options = {}) {
@@ -300,23 +211,56 @@ function mapAdvertiser(a) {
   };
 }
 
-async function loadData() {
+async function loadData(shouldRender = true, showLoading = true) {
   if (!window.akirsApi) return;
-  dataState = "loading";
-  dataError = null;
-  state.isLoading = true;
-  render();
+  if (showLoading) {
+    dataState = "loading";
+    dataError = null;
+    state.isLoading = true;
+    if (shouldRender) render();
+  }
   try {
-    const raw = await window.akirsApi.fetchAdvertisers();
-    profiles = raw.map(mapAdvertiser);
-    dataState = profiles.length ? "ready" : "empty";
+    const [advertisersResult, taxableResult] = await Promise.allSettled([
+      window.akirsApi.fetchAdvertisers(),
+      window.akirsApi.fetchTaxableEntities(),
+    ]);
+
+    if (advertisersResult.status === "fulfilled") {
+      state.profiles = advertisersResult.value.map(mapAdvertiser);
+      dataState = state.profiles.length ? "ready" : "empty";
+      dataError = null;
+    } else {
+      dataError = advertisersResult.reason?.message || "Could not load scraped advertisers";
+      dataState = "error";
+    }
+
+    if (taxableResult.status === "fulfilled") {
+      state.taxable = taxableResult.value.map(mapTaxableEntity);
+    }
+
+    lastBusinessDataRefresh = Date.now();
   } catch (error) {
     dataError = error.message;
     dataState = "error";
   } finally {
     state.isLoading = false;
   }
-  render();
+  if (shouldRender) render();
+}
+
+function jobReachedTerminalStatus(jobs) {
+  const terminalStatuses = new Set(["completed", "failed", "stopped"]);
+  let reachedTerminalStatus = false;
+
+  jobs.forEach((job) => {
+    const previousStatus = jobStatusSnapshot.get(job.job_id);
+    if (previousStatus && previousStatus !== job.status && terminalStatuses.has(job.status)) {
+      reachedTerminalStatus = true;
+    }
+  });
+
+  jobStatusSnapshot = new Map(jobs.map((job) => [job.job_id, job.status]));
+  return reachedTerminalStatus;
 }
 
 async function loadJobs(shouldRender = true) {
@@ -364,7 +308,6 @@ function render() {
     results: renderResults,
     review: renderReview,
     taxable: renderTaxable,
-    assistant: renderAssistant,
     analytics: renderAnalytics,
     settings: renderSettings,
   };
@@ -380,6 +323,11 @@ function render() {
   updateTopbarStatus();
   renderAuthOverlay();
   bindPageEvents(route);
+  if (activeRoute === "scraper") {
+    initScraperScanner();
+  } else {
+    stopScraperScanner();
+  }
 }
 
 function updateAuthChrome() {
@@ -600,21 +548,16 @@ function quickAction(title, body, iconName, href) {
 
 function renderScraper() {
   const job = state.currentJob;
-  const keywords = defaultConfig.keywords.split(",")[0].trim();
 
   return `
     <section class="page">
       ${pageHeader(
         "Scraper Control Center",
-        "Configure platform searches, launch jobs, and monitor the hidden browser worker.",
-        `<button id="start-scraping" class="button button--primary" type="button">${icon("play_arrow")} Start Scraping</button>
-         <button class="button" type="button" data-toast="Job paused">${icon("pause")} Pause</button>
-         <button class="button" type="button" data-toast="Job resumed">${icon("resume")} Resume</button>
-         <button class="button button--danger" type="button" data-confirm="Stop the active scraper job?">${icon("stop")} Stop</button>`,
+        "Configure platform searches, open the Facebook login browser, then queue scraping after that browser closes.",
       )}
 
-      <div class="dashboard-grid">
-        <section class="panel span-5">
+      <div class="scraper-workspace">
+        <section class="panel scraper-config-panel">
           <div class="panel__header"><h2>${icon("tune")} Scraper Configuration</h2></div>
           <form id="scraper-config" class="config-form">
             ${selectField("Platform", ["Facebook", "Instagram", "LinkedIn", "X/Twitter", "TikTok", "Other"], "platform")}
@@ -624,7 +567,6 @@ function renderScraper() {
               ${staticField("Target State", defaultConfig.state)}
               ${inputField("City", defaultConfig.city, "city")}
             </div>
-            ${inputField("Keywords", defaultConfig.keywords, "keywords")}
             <label class="range-field">
               <span class="range-field__top">
                 <span class="label">Thread Count</span>
@@ -641,17 +583,10 @@ function renderScraper() {
           </form>
         </section>
 
-        <section class="span-7">
-          <div class="kpi-grid">
-            ${metric("Browser Status", job?.status || "Idle", "desktop_windows", job?.celery_task_id ? "Celery worker queued" : "Login browser opens first")}
-            ${metric("Leads Found", number(job?.advertiser_count || 0), "group_add", "Advertisers saved")}
-            ${metric("Ads Found", number(job?.ad_count || 0), "travel_explore", "From active job")}
-            ${metric("Job ID", job?.job_id || "-", "tag", job?.created_at ? formatDate(job.created_at) : "No job queued")}
-            ${metric("Job Status", job?.status || "Idle", "queue", job?.error || "No backend errors")}
-            ${metric("Running Jobs", number(activeJobs().length), "memory", "From backend jobs")}
-          </div>
-        </section>
+        ${scraperSignalPanel()}
+      </div>
 
+      <div class="dashboard-grid">
         <section class="panel span-12">
           <div class="panel__header"><h2>${icon("receipt_long")} Scraping Activity Log</h2></div>
           ${activityTable()}
@@ -667,64 +602,236 @@ function scraperSignalPanel() {
   const paused = job?.status === "paused";
   const controllable = isJobControllable(job);
   const jobs = state.jobs;
+  const pausableCount = jobsForBulkAction("pause").length;
+  const resumableCount = jobsForBulkAction("resume").length;
+  const stoppableCount = jobsForBulkAction("stop").length;
   const params = job?.params || {};
   const jobTitle = job ? `Job #${job.job_id}` : "No scraper job selected";
   const locationText = (params.locations || []).join(", ") || "Default geography";
+  const statusText = active ? "SCANNING ACTIVE" : paused ? "SCAN PAUSED" : "SCANNER IDLE";
+  const bufferText = active ? "[||||||||||||||||] 100%" : paused ? "[||||||||--------] 50%" : "[----------------] 0%";
 
   return `
-    <section class="scraper-signal ${active ? "is-active" : ""} ${paused ? "is-paused" : ""} ${!active && !paused ? "is-idle" : ""}" aria-live="polite">
-      <div class="signal-monitor">
-        <div class="signal-monitor__screen">
-          <div class="gear-field">
-            <div class="gear gear--outer">
-              <div class="gear gear--inner gear--inner-one"></div>
-              <div class="gear gear--inner gear--inner-two"></div>
-              <div class="gear gear--inner gear--inner-three"></div>
-            </div>
+    <section class="scraper-signal scan-os ${active ? "is-active" : ""} ${paused ? "is-paused" : ""} ${!active && !paused ? "is-idle" : ""}" aria-live="polite" data-scanner-active="${active}">
+      <div class="scan-os__visual">
+        <div class="scan-os__noise"></div>
+        <div class="scan-os__overlay" aria-hidden="true">
+          <div class="scan-os__crosshair scan-os__crosshair--h"></div>
+          <div class="scan-os__crosshair scan-os__crosshair--v"></div>
+          <div class="scan-os__corner scan-os__corner--tl"></div>
+          <div class="scan-os__corner scan-os__corner--tr"></div>
+          <div class="scan-os__corner scan-os__corner--bl"></div>
+          <div class="scan-os__corner scan-os__corner--br"></div>
+          <div class="scan-os__status"><span></span><strong>${statusText}</strong></div>
+          <div class="scan-os__stream">
+            <div>RESOLUTION: 0.0012m/px</div>
+            <div>BUFFER: ${bufferText}</div>
+            <div>ENCRYPTION: AES_256_GCM</div>
+            <div>JOB_REF: ${escapeHtml(job ? `AKIRS_${job.job_id}` : "UNASSIGNED")}</div>
           </div>
         </div>
-        <div class="signal-monitor__meta">
-          <span class="eyebrow">${active ? "Scraper engine running" : paused ? "Scraper paused" : "Scraper engine idle"}</span>
+        <div class="scan-os__scanline"></div>
+        <canvas id="scraper-scanner-canvas" class="scan-os__canvas" aria-label="Running scraper radar animation"></canvas>
+        <div class="scan-os__coords" id="scanner-coords">REL_X: 0.0000 | REL_Y: 0.0000</div>
+      </div>
+
+      <div class="scan-os__widgets">
+        <div class="scan-os__widget">
+          <span>REF_JOB</span>
           <strong>${escapeHtml(jobTitle)}</strong>
           <small>${escapeHtml(job?.status || "idle")} ${job?.error ? `- ${escapeHtml(job.error)}` : ""}</small>
         </div>
+        <div class="scan-os__widget">
+          <span>POSITION_LOG</span>
+          <strong>${escapeHtml(locationText)}</strong>
+          <small>${escapeHtml(job?.started_at ? formatDateTime(job.started_at) : "Awaiting launch")}</small>
+        </div>
+        <div class="scan-os__widget scan-os__widget--bars">
+          <span>SIGNAL_FREQ</span>
+          <div class="scan-os__bars">
+            ${Array.from({ length: 24 }, (_, index) => `<i style="--bar:${index + 1}"></i>`).join("")}
+          </div>
+        </div>
       </div>
 
-      <div class="signal-details">
-        <div><span class="label">Location</span><strong>${escapeHtml(locationText)}</strong></div>
-        <div><span class="label">Runtime</span><strong>${escapeHtml(runtimeLabel(job))}</strong></div>
-        <div><span class="label">Started</span><strong>${escapeHtml(job?.started_at ? formatDateTime(job.started_at) : "Not started")}</strong></div>
-        <div><span class="label">Ads</span><strong>${number(job?.ad_count || 0)}</strong></div>
-        <div><span class="label">Advertisers</span><strong>${number(job?.advertiser_count || 0)}</strong></div>
-      </div>
+      <div class="scan-os__lower">
+        <div class="signal-details">
+          <div><span class="label">Location</span><strong>${escapeHtml(locationText)}</strong></div>
+          <div><span class="label">Runtime</span><strong>${escapeHtml(runtimeLabel(job))}</strong></div>
+          <div><span class="label">Started</span><strong>${escapeHtml(job?.started_at ? formatDateTime(job.started_at) : "Not started")}</strong></div>
+          <div><span class="label">Browser Status</span><strong>${escapeHtml(job?.status || "Idle")}</strong></div>
+          <div><span class="label">Leads Found</span><strong>${number(job?.advertiser_count || 0)}</strong></div>
+          <div><span class="label">Ads Found</span><strong>${number(job?.ad_count || 0)}</strong></div>
+          <div><span class="label">Job ID</span><strong>${escapeHtml(job?.job_id || "-")}</strong></div>
+          <div><span class="label">Job Status</span><strong>${escapeHtml(job?.error || job?.status || "Idle")}</strong></div>
+        </div>
 
-      <div class="job-switcher">
-        <div class="job-switcher__top">
-          <strong>Scraping Jobs</strong>
-        </div>
-        <div class="scraper-controls">
-          ${
-            controllable
-              ? `<button class="button button--danger" type="button" data-stop-job="${job.job_id}">${icon("stop")} End</button>
-                 ${
-                   paused
-                     ? `<button class="button button--primary" type="button" data-resume-job="${job.job_id}">${icon("play_arrow")} Resume</button>`
-                     : `<button class="button" type="button" data-pause-job="${job.job_id}">${icon("pause")} Pause</button>`
-                 }`
-              : `<button id="start-scraping" class="button button--primary" type="button" data-start-scrape>${icon("play_arrow")} Start</button>`
-          }
-          <button class="button" type="button" data-new-scrape>${icon("add")} New Job</button>
-        </div>
-        <div class="job-switcher__list">
-          ${
-            jobs.length
-              ? jobs.map(jobButton).join("")
-              : `<p class="muted">No scraper jobs have been created yet.</p>`
-          }
+        <div class="job-switcher">
+          <div class="job-switcher__top">
+            <strong>Scraping Jobs</strong>
+          </div>
+          <div class="scraper-controls scraper-controls--bulk" aria-label="Bulk job controls">
+            <button class="button" type="button" data-bulk-job-action="pause" ${pausableCount ? "" : "disabled"}>${icon("pause_circle")} Pause All</button>
+            <button class="button button--primary" type="button" data-bulk-job-action="resume" ${resumableCount ? "" : "disabled"}>${icon("play_circle")} Resume All</button>
+            <button class="button button--danger" type="button" data-bulk-job-action="stop" ${stoppableCount ? "" : "disabled"}>${icon("stop_circle")} Stop All</button>
+          </div>
+          <div class="scraper-controls">
+            ${
+              controllable
+                ? `<button class="button button--danger" type="button" data-stop-job="${job.job_id}">${icon("stop")} End</button>
+                   ${
+                     paused
+                       ? `<button class="button button--primary" type="button" data-resume-job="${job.job_id}">${icon("play_arrow")} Resume</button>`
+                       : `<button class="button" type="button" data-pause-job="${job.job_id}">${icon("pause")} Pause</button>`
+                   }`
+                : `<button id="start-scraping" class="button button--primary" type="button" data-start-scrape>${icon("play_arrow")} Start</button>`
+            }
+            <button class="button" type="button" data-new-scrape>${icon("add")} New Job</button>
+          </div>
+          <div class="job-switcher__list">
+            ${
+              jobs.length
+                ? jobs.map(jobButton).join("")
+                : `<p class="muted">No scraper jobs have been created yet.</p>`
+            }
+          </div>
         </div>
       </div>
     </section>
   `;
+}
+
+function stopScraperScanner() {
+  if (scraperScannerFrame) {
+    window.cancelAnimationFrame?.(scraperScannerFrame);
+    scraperScannerFrame = null;
+  }
+}
+
+function initScraperScanner() {
+  stopScraperScanner();
+
+  const shell = document.querySelector(".scan-os");
+  const canvas = document.querySelector("#scraper-scanner-canvas");
+  if (!shell || !canvas || shell.dataset.scannerActive !== "true" || !window.requestAnimationFrame) return;
+
+  const coords = document.querySelector("#scanner-coords");
+  const syncSize = () => {
+    const rect = canvas.getBoundingClientRect();
+    const width = Math.max(1, Math.floor(rect.width || canvas.clientWidth || 900));
+    const height = Math.max(1, Math.floor(rect.height || canvas.clientHeight || 360));
+    if (canvas.width !== width || canvas.height !== height) {
+      canvas.width = width;
+      canvas.height = height;
+    }
+  };
+
+  const gl = canvas.getContext("webgl") || canvas.getContext("experimental-webgl");
+  if (!gl) return;
+
+  const vertexShader = `attribute vec2 a_position;
+varying vec2 v_texCoord;
+void main() {
+  v_texCoord = a_position * 0.5 + 0.5;
+  gl_Position = vec4(a_position, 0.0, 1.0);
+}`;
+  const fragmentShader = `precision highp float;
+uniform float u_time;
+uniform vec2 u_resolution;
+uniform vec2 u_mouse;
+varying vec2 v_texCoord;
+
+float grid(vec2 uv, float res) {
+  vec2 grid = fract(uv * res);
+  return 1.0 - smoothstep(0.0, 0.05, min(grid.x, grid.y));
+}
+
+void main() {
+  vec2 uv = v_texCoord;
+  vec2 centered_uv = uv - 0.5;
+  centered_uv.x *= u_resolution.x / u_resolution.y;
+  float dist = length(centered_uv);
+  float angle = atan(centered_uv.y, centered_uv.x);
+  vec3 color = vec3(0.04, 0.06, 0.1);
+  float g = grid(uv, 10.0) * 0.1;
+  color += vec3(0.0, 0.5, 0.8) * g;
+  float sweep_angle = fract(u_time * 0.2) * 6.28318 - 3.14159;
+  float diff = mod(angle - sweep_angle, 6.28318);
+  float sweep = smoothstep(1.0, 0.0, diff) * (1.0 - smoothstep(0.45, 0.5, dist));
+  color += vec3(0.0, 0.95, 1.0) * sweep * 0.4;
+  float circle1 = abs(dist - 0.25);
+  float circle2 = abs(dist - 0.45);
+  float circles = (1.0 - smoothstep(0.002, 0.005, circle1)) + (1.0 - smoothstep(0.002, 0.005, circle2));
+  color += vec3(0.0, 0.6, 1.0) * circles * 0.5;
+  float pulse = sin(u_time * 2.0 - dist * 10.0) * 0.5 + 0.5;
+  color += vec3(0.0, 0.3, 0.5) * pulse * (1.0 - smoothstep(0.0, 0.5, dist)) * 0.2;
+  float noise = fract(sin(dot(floor(uv * 50.0), vec2(12.9898, 78.233))) * 43758.5453);
+  if (noise > 0.995) {
+    float blink = step(0.5, sin(u_time * 10.0 + noise));
+    color += vec3(0.0, 1.0, 0.4) * blink;
+  }
+  color *= 1.0 - smoothstep(0.4, 1.2, dist);
+  gl_FragColor = vec4(color, 1.0);
+}`;
+
+  const compileShader = (type, source) => {
+    const shader = gl.createShader(type);
+    gl.shaderSource(shader, source);
+    gl.compileShader(shader);
+    return gl.getShaderParameter(shader, gl.COMPILE_STATUS) ? shader : null;
+  };
+
+  const vertex = compileShader(gl.VERTEX_SHADER, vertexShader);
+  const fragment = compileShader(gl.FRAGMENT_SHADER, fragmentShader);
+  if (!vertex || !fragment) return;
+
+  const program = gl.createProgram();
+  gl.attachShader(program, vertex);
+  gl.attachShader(program, fragment);
+  gl.linkProgram(program);
+  if (!gl.getProgramParameter(program, gl.LINK_STATUS)) return;
+
+  gl.useProgram(program);
+  const buffer = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+  const position = gl.getAttribLocation(program, "a_position");
+  gl.enableVertexAttribArray(position);
+  gl.vertexAttribPointer(position, 2, gl.FLOAT, false, 0, 0);
+
+  const uTime = gl.getUniformLocation(program, "u_time");
+  const uResolution = gl.getUniformLocation(program, "u_resolution");
+  const uMouse = gl.getUniformLocation(program, "u_mouse");
+  const mouse = { x: canvas.width / 2, y: canvas.height / 2 };
+
+  canvas.onmousemove = (event) => {
+    const rect = canvas.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    const nx = (event.clientX - rect.left) / rect.width;
+    const ny = 1 - (event.clientY - rect.top) / rect.height;
+    mouse.x = nx * canvas.width;
+    mouse.y = ny * canvas.height;
+    if (coords) {
+      coords.textContent = `REL_X: ${nx.toFixed(4)} | REL_Y: ${(1 - ny).toFixed(4)}`;
+      coords.style.left = `${event.clientX - rect.left + 15}px`;
+      coords.style.top = `${event.clientY - rect.top + 15}px`;
+      coords.classList.add("is-visible");
+    }
+  };
+  canvas.onmouseleave = () => coords?.classList.remove("is-visible");
+
+  const renderFrame = (time) => {
+    syncSize();
+    gl.viewport(0, 0, canvas.width, canvas.height);
+    gl.uniform1f(uTime, time * 0.001);
+    gl.uniform2f(uResolution, canvas.width, canvas.height);
+    gl.uniform2f(uMouse, mouse.x, mouse.y);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    scraperScannerFrame = window.requestAnimationFrame(renderFrame);
+  };
+
+  syncSize();
+  scraperScannerFrame = window.requestAnimationFrame(renderFrame);
 }
 
 function jobButton(job) {
@@ -1267,6 +1374,41 @@ async function updateJobAction(jobId, action) {
   }
 }
 
+async function updateBulkJobAction(action) {
+  const actionMap = {
+    pause: window.akirsApi.pauseJob,
+    resume: window.akirsApi.resumeJob,
+    stop: window.akirsApi.stopJob,
+  };
+  const actionLabels = {
+    pause: "paused",
+    resume: "resumed",
+    stop: "stopped",
+  };
+  const jobs = jobsForBulkAction(action);
+  const request = actionMap[action];
+  if (!request || !jobs.length) return;
+
+  try {
+    const results = await Promise.allSettled(jobs.map((job) => request(job.job_id)));
+    const failed = results.filter((result) => result.status === "rejected");
+    const fulfilled = results.filter((result) => result.status === "fulfilled");
+    const selectedJobResult = fulfilled
+      .map((result) => result.value)
+      .find((freshJob) => freshJob?.job_id === state.currentJob?.job_id);
+    if (selectedJobResult) state.currentJob = selectedJobResult;
+    await loadJobs(false);
+    addActivity(
+      "Scraper",
+      failed.length ? "Warning" : "Success",
+      `${fulfilled.length} job${fulfilled.length === 1 ? "" : "s"} ${actionLabels[action]}${failed.length ? `, ${failed.length} failed` : ""}.`,
+    );
+    render();
+  } catch (error) {
+    addActivity("Scraper", "Warning", `Could not ${action} scraper jobs: ${error.message}`);
+  }
+}
+
 async function deleteScrapeJob(jobId) {
   try {
     await window.akirsApi.deleteJob(jobId);
@@ -1345,6 +1487,15 @@ function bindPageEvents(route) {
     const jobId = Number(event.currentTarget.dataset.stopJob);
     if (window.confirm(`End scraper job #${jobId}?`)) updateJobAction(jobId, "stop");
   });
+  document.querySelectorAll("[data-bulk-job-action]").forEach((button) => {
+    button.onclick = () => {
+      const action = button.dataset.bulkJobAction;
+      const jobs = jobsForBulkAction(action);
+      if (!jobs.length) return;
+      if (action === "stop" && !window.confirm(`Stop ${jobs.length} active scraper job${jobs.length === 1 ? "" : "s"}?`)) return;
+      updateBulkJobAction(action);
+    };
+  });
   document.querySelectorAll("[data-delete-job]").forEach((button) => {
     button.onclick = (event) => {
       event.stopPropagation();
@@ -1352,7 +1503,7 @@ function bindPageEvents(route) {
       if (window.confirm(`Delete stopped scraper job #${jobId}?`)) deleteScrapeJob(jobId);
     };
   });
-  document.querySelector("[data-refresh-data]")?.addEventListener("click", loadData);
+  document.querySelector("[data-refresh-data]")?.addEventListener("click", () => loadData());
   document.querySelector("[data-new-scrape]")?.addEventListener("click", () => {
     state.currentJob = null;
     render();
@@ -1446,10 +1597,13 @@ if (!window.location.hash) {
 }
 
 loadData();
+loadJobs(false);
 
 window.setInterval(async () => {
   if (!window.akirsApi) return;
   await loadJobs(false);
+  const shouldRefreshCompletedJobData = jobReachedTerminalStatus(state.jobs);
+  const shouldRefreshRunningJobData = activeJobs().length && Date.now() - lastBusinessDataRefresh > 15000;
   if (state.currentJob && isScraperActive(state.currentJob)) {
     try {
       state.currentJob = await window.akirsApi.fetchJob(state.currentJob.job_id);
@@ -1457,6 +1611,9 @@ window.setInterval(async () => {
       // Keep the last visible job state if a polling request fails.
     }
   }
+  if (shouldRefreshCompletedJobData || shouldRefreshRunningJobData) {
+    await loadData(false, false);
+  }
   updateTopbarStatus();
-  if (getRoute() === "scraper") render();
+  if (["dashboard", "scraper", "results", "review", "taxable", "analytics"].includes(getRoute())) render();
 }, 5000);

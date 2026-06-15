@@ -221,27 +221,3 @@ async def _job_status_response(job: ScrapeJob, session: AsyncSession) -> JobStat
         ad_count=int(ad_count or 0),
         advertiser_count=int(adv_count or 0),
     )
-
-
-@router.post("/{job_id}/stop", response_model=JobStatusResponse)
-async def stop_job(
-    job_id: int,
-    session: AsyncSession = Depends(db_session),
-) -> JobStatusResponse:
-    from tasks.celery_app import celery_app
-
-    job = await session.get(ScrapeJob, job_id)
-    if job is None:
-        raise HTTPException(status_code=404, detail="job not found")
-
-    if job.status not in ["completed", "failed"]:
-        # Revoke the task in Celery, terminate=True sends SIGTERM to the worker child process.
-        if job.celery_task_id:
-            celery_app.control.revoke(job.celery_task_id, terminate=True)
-            
-        job.status = "failed"
-        job.error = "Manually stopped by user."
-        await session.commit()
-
-    return await get_job(job_id, session)
-
