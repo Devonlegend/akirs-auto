@@ -24,6 +24,7 @@ async def launch_browser(headless: bool = True, user_data_dir: str | Path | None
             "java_script_enabled": True,
             "bypass_csp": True,
             "locale": "en-US",
+            "ignore_https_errors": True,
         }
 
         if user_data_dir:

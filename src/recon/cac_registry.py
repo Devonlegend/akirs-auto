@@ -45,8 +45,33 @@ class CACRegistryRecon(ReconSource):
             try:
                 # The CAC portal can be slow and relies heavily on JS.
                 # We go to the search URL directly, and wait for the results table or "No record found".
-                await page.goto(url, timeout=_NAV_TIMEOUT, wait_until="networkidle")
+                await page.goto(url, timeout=_NAV_TIMEOUT, wait_until="domcontentloaded")
                 
+                # Check for Cloudflare challenge
+                if await page.title() == "Just a moment...":
+                    logger.info("[cac_registry] Cloudflare challenge detected. Attempting to bypass...")
+                    # Wait for the challenge widget to load
+                    await page.wait_for_timeout(3000)
+                    
+                    # Sometimes Cloudflare requires a click on the checkbox
+                    try:
+                        # Cloudflare Turnstile typically uses an iframe or a specific shadow DOM element
+                        challenge_frame = page.frame_locator('iframe[src*="cloudflare"]')
+                        checkbox = challenge_frame.locator('input[type="checkbox"], .ctp-checkbox-label')
+                        if await checkbox.count() > 0:
+                            await checkbox.first.click()
+                            logger.info("[cac_registry] Clicked Cloudflare checkbox.")
+                        else:
+                            # Move mouse around to simulate human activity
+                            await page.mouse.move(100, 100)
+                            await page.mouse.move(200, 200)
+                            await page.mouse.click(200, 200)
+                    except PlaywrightError:
+                        pass
+                    
+                    # Wait and see if it redirects to the actual results
+                    await page.wait_for_timeout(5000)
+
                 # Wait for the results to populate (usually in a div or table)
                 # If there are results, they usually appear in cards or table rows.
                 try:
