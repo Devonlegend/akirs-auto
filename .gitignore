@@ -43,3 +43,4 @@ debug.py
 fix*.py
 scratch.py
 .playwright-cli/*
+*.rdb
