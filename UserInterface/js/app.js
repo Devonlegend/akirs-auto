@@ -429,6 +429,7 @@ function render() {
   } else {
     stopScraperScanner();
   }
+  updateSSEConnection();
 }
 
 function updateAuthChrome() {
@@ -1824,24 +1825,58 @@ if (!window.location.hash) {
   render();
 }
 
-loadData();
-loadJobs(false);
+let currentEventSource = null;
 
-window.setInterval(async () => {
-  if (!window.akirsApi) return;
-  await loadJobs(false);
-  const shouldRefreshCompletedJobData = jobReachedTerminalStatus(state.jobs);
-  const shouldRefreshRunningJobData = activeJobs().length && Date.now() - lastBusinessDataRefresh > 15000;
-  if (state.currentJob && isScraperActive(state.currentJob)) {
-    try {
-      state.currentJob = await window.akirsApi.fetchJob(state.currentJob.job_id);
-    } catch {
-      // Keep the last visible job state if a polling request fails.
+function updateSSEConnection() {
+  const route = getRoute();
+  const needsSSE = ["dashboard", "scraper", "results"].includes(route);
+  const hasActiveJob = activeJobs().length > 0;
+  const user = JSON.parse(window.localStorage.getItem("akirs.user") || "null");
+
+  if (needsSSE && hasActiveJob && user && user.token) {
+    if (!currentEventSource && window.akirsApi) {
+      currentEventSource = new EventSource(`${window.akirsApi.API_BASE}/jobs/events?token=${user.token}`);
+      currentEventSource.onmessage = async (event) => {
+        const jobState = JSON.parse(event.data);
+        
+        // Map SSE keys to JobStatusResponse keys
+        if (jobState.keywords_done !== undefined) jobState.keyword_run_count = jobState.keywords_done;
+        if (jobState.ads !== undefined) jobState.ad_count = jobState.ads;
+        if (jobState.advertisers !== undefined) jobState.advertiser_count = jobState.advertisers;
+
+        const existingJob = state.jobs.find(j => j.job_id === jobState.job_id);
+        if (existingJob) {
+          Object.assign(existingJob, jobState);
+        } else {
+          state.jobs.unshift(jobState);
+        }
+        
+        if (state.currentJob && state.currentJob.job_id === jobState.job_id) {
+          Object.assign(state.currentJob, jobState);
+        }
+
+        if (jobState.terminal) {
+          await loadData(false, false);
+          await loadJobs(false);
+          updateSSEConnection();
+        } else if (Date.now() - lastBusinessDataRefresh > 15000) {
+          await loadData(false, false);
+        }
+        
+        updateTopbarStatus();
+        if (["dashboard", "scraper", "results", "review", "taxable", "analytics"].includes(getRoute())) render();
+      };
+      currentEventSource.onerror = () => {
+        // EventSource auto-reconnects
+      };
+    }
+  } else {
+    if (currentEventSource) {
+      currentEventSource.close();
+      currentEventSource = null;
     }
   }
-  if (shouldRefreshCompletedJobData || shouldRefreshRunningJobData) {
-    await loadData(false, false);
-  }
-  updateTopbarStatus();
-  if (["dashboard", "scraper", "results", "review", "taxable", "analytics"].includes(getRoute())) render();
-}, 5000);
+}
+
+loadData();
+loadJobs(false);

@@ -24,10 +24,36 @@ from src.db.repositories import (
     SocialLinkRepository,
 )
 from src.keywords import expand
+from src.realtime.job_events import publish_job_event
 from src.scrapers.browser import launch_browser
 from src.scrapers.facebook_ads import FacebookAdsScraper
 
 logger = logging.getLogger(__name__)
+
+
+def _progress(
+    job_id: int,
+    params: dict[str, Any],
+    status: str,
+    *,
+    keywords_total: int,
+    keywords_done: int,
+    ads: int,
+    advertisers: int,
+    error: str | None = None,
+    terminal: bool = False,
+) -> dict[str, Any]:
+    return {
+        "job_id": job_id,
+        "status": status,
+        "operator_user_id": str(params.get("operator_user_id") or ""),
+        "keywords_total": keywords_total,
+        "keywords_done": keywords_done,
+        "ads": ads,
+        "advertisers": advertisers,
+        "error": error,
+        "terminal": terminal,
+    }
 
 
 @shared_task(name="tasks.phase1_scrape.scrape_facebook_ads_job", bind=True)
@@ -63,9 +89,15 @@ async def _run(job_id: int, params: dict[str, Any], celery_task_id: str | None) 
         await JobRepository(session).mark_started(job_id, celery_task_id)
         await session.commit()
 
+    keywords_total = len(specs)
+    await publish_job_event(
+        _progress(job_id, params, "running", keywords_total=keywords_total, keywords_done=0, ads=0, advertisers=0)
+    )
+
     new_advertiser_ids: list[int] = []
     all_advertiser_ids: set[int] = set()
     total_ads = 0
+    keywords_done = 0
     error_msg: str | None = None
     final_status: str | None = None
 
@@ -132,6 +164,19 @@ async def _run(job_id: int, params: dict[str, Any], celery_task_id: str | None) 
                     await kr_repo.mark_completed(keyword_run_id, ads_found=saved)
                     total_ads += saved
                     await session.commit()
+
+                keywords_done += 1
+                await publish_job_event(
+                    _progress(
+                        job_id,
+                        params,
+                        "running",
+                        keywords_total=keywords_total,
+                        keywords_done=keywords_done,
+                        ads=total_ads,
+                        advertisers=len(all_advertiser_ids),
+                    )
+                )
     except Exception as e:
         logger.exception(f"Phase 1 failed: {e}")
         error_msg = str(e)
@@ -142,6 +187,21 @@ async def _run(job_id: int, params: dict[str, Any], celery_task_id: str | None) 
         if job and job.status != "stopped":
             await JobRepository(session).mark_completed(job_id, error=error_msg)
             await session.commit()
+
+    terminal_status = "stopped" if final_status == "stopped" else ("failed" if error_msg else "completed")
+    await publish_job_event(
+        _progress(
+            job_id,
+            params,
+            terminal_status,
+            keywords_total=keywords_total,
+            keywords_done=keywords_done,
+            ads=total_ads,
+            advertisers=len(all_advertiser_ids),
+            error=error_msg,
+            terminal=True,
+        )
+    )
 
     if run_recon and all_advertiser_ids and not error_msg and final_status != "stopped":
         _dispatch_recon(job_id, list(all_advertiser_ids))

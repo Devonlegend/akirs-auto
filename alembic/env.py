@@ -9,6 +9,9 @@ from src.config.settings import get_settings
 from src.db.base import Base
 from src.db import models  # noqa: F401 — ensure models are registered
 
+from backend.database import Base as AuthBase
+from backend import models as _auth_models  # noqa: F401 — register auth/admin tables
+
 config = context.config
 
 if config.config_file_name is not None:
@@ -17,7 +20,7 @@ if config.config_file_name is not None:
 settings = get_settings()
 config.set_main_option("sqlalchemy.url", settings.database_url_sync)
 
-target_metadata = Base.metadata
+target_metadata = [Base.metadata, AuthBase.metadata]
 
 
 def run_migrations_offline() -> None:

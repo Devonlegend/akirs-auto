@@ -1,17 +1,23 @@
 """Jobs API routes."""
 
+import asyncio
+import json
 import logging
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+import redis.asyncio as aioredis
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
+from fastapi.responses import StreamingResponse
 from sqlalchemy import delete, desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.security import verify_token
 from src.api.deps import db_session
 from src.api.schemas import JobCreatedResponse, JobStatusResponse, ScrapeJobRequest
 from src.config.settings import get_settings
 from src.db.models import Ad, Advertiser, KeywordRun, ScrapeJob
 from src.db.repositories import JobRepository
+from src.realtime.job_events import CHANNEL, publish_job_event, snapshot_active_jobs
 from src.tasks.celery_app import celery_app
 from src.tasks.phase1_scrape import scrape_facebook_ads_job
 
@@ -110,6 +116,76 @@ async def list_jobs(
     return [await _job_status_response(job, session) for job in jobs]
 
 
+async def _publish_status_change(job: ScrapeJob, *, terminal: bool) -> None:
+    """Push a job's status change to SSE subscribers. Counts are omitted; the
+    client merges this onto the last-known state for that job."""
+    params = job.params_json or {}
+    await publish_job_event(
+        {
+            "job_id": job.id,
+            "status": job.status,
+            "operator_user_id": str(params.get("operator_user_id") or ""),
+            "terminal": terminal,
+        }
+    )
+
+
+_SSE_KEEPALIVE_SECONDS = 15.0
+
+
+@router.get("/events")
+async def job_events(request: Request, token: str = "") -> StreamingResponse:
+    """Server-Sent Events stream of job state for the authenticated operator.
+
+    EventSource cannot set headers, so the signed session token is passed as a
+    query param. Each message is the same state object the worker publishes,
+    filtered to jobs owned by this operator.
+    """
+    payload = verify_token(token)
+    if payload is None:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    uid = str(payload["uid"])
+
+    async def event_stream():
+        client = aioredis.from_url(get_settings().redis_url, decode_responses=True)
+        pubsub = client.pubsub()
+        # Subscribe BEFORE reading the snapshot: subscribing after could drop an
+        # event fired in the gap. Worst case is a duplicate, which the client
+        # merges idempotently.
+        await pubsub.subscribe(CHANNEL)
+        try:
+            for state in await snapshot_active_jobs():
+                if str(state.get("operator_user_id") or "") == uid:
+                    yield f"data: {json.dumps(state)}\n\n"
+            while True:
+                if await request.is_disconnected():
+                    break
+                message = await pubsub.get_message(
+                    ignore_subscribe_messages=True, timeout=_SSE_KEEPALIVE_SECONDS
+                )
+                if message is None:
+                    yield ": keepalive\n\n"
+                    continue
+                try:
+                    state = json.loads(message["data"])
+                except (TypeError, ValueError):
+                    continue
+                if str(state.get("operator_user_id") or "") == uid:
+                    yield f"data: {json.dumps(state)}\n\n"
+        finally:
+            # Always tear down on disconnect so closed tabs don't leak
+            # subscriptions/connections.
+            await pubsub.unsubscribe(CHANNEL)
+            await pubsub.aclose()
+            await client.aclose()
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no", "Connection": "keep-alive"},
+    )
+
+
 @router.post("/{job_id}/pause", response_model=JobStatusResponse)
 async def pause_job(
     job_id: int,
@@ -120,6 +196,7 @@ async def pause_job(
         job.status = "paused"
         await session.commit()
         await session.refresh(job)
+        await _publish_status_change(job, terminal=False)
     return await _job_status_response(job, session)
 
 
@@ -133,6 +210,7 @@ async def resume_job(
         job.status = "running" if job.started_at else "queued"
         await session.commit()
         await session.refresh(job)
+        await _publish_status_change(job, terminal=False)
     return await _job_status_response(job, session)
 
 
@@ -148,6 +226,7 @@ async def stop_job(
         job.error = "Stopped by operator"
         await session.commit()
         await session.refresh(job)
+        await _publish_status_change(job, terminal=True)
         if job.celery_task_id:
             try:
                 celery_app.control.revoke(job.celery_task_id, terminate=True)

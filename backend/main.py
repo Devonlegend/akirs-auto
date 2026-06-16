@@ -15,10 +15,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
+from backend.admin import build_admin
 from backend.database import AsyncSessionLocal, Base, engine
 from backend.models import users  # noqa: F401 - register auth tables with SQLAlchemy metadata
-from backend.routers import auth, scraped, taxation
-from backend.services.auth_queries import seed_default_users
+from backend.routers import auth, embed_keys, scraped, taxation
+from backend.services.auth_queries import seed_default_admin, seed_default_users
 
 from api.routes import advertisers as api_advertisers
 from api.routes import geography as api_geography
@@ -40,6 +41,7 @@ async def lifespan(app: FastAPI):
 
     async with AsyncSessionLocal() as session:
         await seed_default_users(session)
+        await seed_default_admin(session)
     yield
 
 
@@ -58,10 +60,17 @@ app.add_middleware(
 app.include_router(scraped.router)
 app.include_router(taxation.router)
 app.include_router(auth.router)
+app.include_router(embed_keys.router)
 app.include_router(api_jobs.router)
 app.include_router(api_advertisers.router)
 app.include_router(api_geography.router)
 app.include_router(chatbot_router)
+
+from chatbot.asgi import app as widget_app
+app.mount("/widget-api", widget_app)
+
+# starlette-admin panel at /admin (session-gated to Admin accounts).
+build_admin(engine).mount_to(app)
 
 ui_dir = Path(__file__).resolve().parent.parent / "UserInterface"
 if ui_dir.exists():
