@@ -23,6 +23,8 @@ from backend.services.auth_queries import seed_default_users
 from api.routes import advertisers as api_advertisers
 from api.routes import geography as api_geography
 from api.routes import jobs as api_jobs
+from chatbot.api.routes import prepare_pipeline, shutdown_pipeline
+from chatbot.api.routes import router as chatbot_router
 from src.db.base import Base as JobsBase
 from src.db.base import get_engine as get_jobs_engine
 from src.db import models as _jobs_models  # noqa: F401 - register scraper tables
@@ -59,6 +61,7 @@ app.include_router(auth.router)
 app.include_router(api_jobs.router)
 app.include_router(api_advertisers.router)
 app.include_router(api_geography.router)
+app.include_router(chatbot_router)
 
 ui_dir = Path(__file__).resolve().parent.parent / "UserInterface"
 if ui_dir.exists():

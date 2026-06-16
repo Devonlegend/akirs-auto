@@ -79,18 +79,7 @@ class Retriever:
 
 
 def format_context(chunks: list[StoredChunk], *, max_tokens: int = 2000) -> str:
-    """Format retrieved chunks into a single context string for the LLM.
-
-    Each chunk is prefixed with a source label.  The result is truncated
-    to roughly *max_tokens* characters (4 chars ≈ 1 token heuristic).
-
-    Args:
-        chunks: Retrieved chunks from the retriever.
-        max_tokens: Approximate maximum tokens for the context window.
-
-    Returns:
-        Formatted context string.
-    """
+    
     if not chunks:
         return "No relevant context found."
 
