@@ -8,6 +8,7 @@ from typing import Any
 from sqlalchemy import select, func
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from src.db.models import (
     Ad,
@@ -159,9 +160,17 @@ class GeographyRepository:
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    async def get_by_name(self, name: str) -> Geography | None:
-        result = await self.session.execute(select(Geography).where(Geography.name == name))
-        return result.scalar_one_or_none()
+    async def get_by_name(self, name: str, parent_name: str | None = None) -> Geography | None:
+        query = select(Geography).where(Geography.name == name)
+        if parent_name:
+            parent = aliased(Geography)
+            query = (
+                query.join(parent, Geography.parent_id == parent.id)
+                .where(parent.name == parent_name)
+                .where(parent.kind == "state")
+            )
+        result = await self.session.execute(query.order_by(Geography.kind, Geography.name))
+        return result.scalars().first()
 
     async def list_all(self) -> list[Geography]:
         result = await self.session.execute(select(Geography))

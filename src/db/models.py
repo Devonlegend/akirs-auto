@@ -27,7 +27,7 @@ class Geography(Base):
 
     parent: Mapped["Geography | None"] = relationship("Geography", remote_side="Geography.id")
 
-    __table_args__ = (UniqueConstraint("name", "kind", name="uq_geography_name_kind"),)
+    __table_args__ = (UniqueConstraint("name", "kind", "parent_id", name="uq_geography_name_kind_parent"),)
 
 
 class ScrapeJob(Base):

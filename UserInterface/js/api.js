@@ -39,6 +39,10 @@ async function fetchTaxableEntities() {
   return request("/taxation/entities");
 }
 
+async function fetchGeography() {
+  return request("/geography/nigeria");
+}
+
 async function fetchJobs() {
   return request("/jobs");
 }
@@ -80,6 +84,7 @@ window.akirsApi = {
   API_BASE,
   fetchAdvertisers,
   fetchTaxableEntities,
+  fetchGeography,
   fetchJobs,
   fetchJob,
   pauseJob,

@@ -8,7 +8,11 @@ from pydantic import BaseModel, Field
 class ScrapeJobRequest(BaseModel):
     locations: list[str] | None = Field(
         default=None,
-        description="Akwa Ibom LGAs or town names. Defaults to all 31 LGAs if omitted.",
+        description="Nigeria LGAs or town names. Defaults to all Akwa Ibom LGAs if omitted.",
+    )
+    location_state: str | None = Field(
+        default=None,
+        description="State used to disambiguate selected LGA names.",
     )
     categories: list[str] | None = Field(
         default=None,

@@ -73,6 +73,7 @@ async def _run(job_id: int, params: dict[str, Any], celery_task_id: str | None) 
     # the public Ads Library unless both are supplied; they are never persisted.
     facebook_email = params.get("facebook_email") or None
     facebook_password = params.get("facebook_password") or None
+    location_state = params.get("location_state") or None
     user_keywords = params.get("user_keywords") or [
         item.strip() for item in settings.scraper_keywords.split(",") if item.strip()
     ]
@@ -120,7 +121,11 @@ async def _run(job_id: int, params: dict[str, Any], celery_task_id: str | None) 
                 async with AsyncSessionLocal() as session:
                     geo_repo = GeographyRepository(session)
                     kr_repo = KeywordRunRepository(session)
-                    geo = await geo_repo.get_by_name(spec.location) if spec.location else None
+                    geo = (
+                        await geo_repo.get_by_name(spec.location, parent_name=location_state)
+                        if spec.location
+                        else None
+                    )
                     keyword_run = await kr_repo.create(
                         scrape_job_id=job_id,
                         keyword=spec.keyword,

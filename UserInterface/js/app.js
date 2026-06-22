@@ -12,6 +12,39 @@ const defaultConfig = {
   city: "Uyo",
 };
 const DEFAULT_SCRAPER_KEYWORDS = "restaurant, hotel, boutique, pharmacy";
+const FALLBACK_AKWA_IBOM_LGAS = [
+  "Abak",
+  "Eastern Obolo",
+  "Eket",
+  "Esit Eket",
+  "Essien Udim",
+  "Etim Ekpo",
+  "Etinan",
+  "Ibeno",
+  "Ibesikpo Asutan",
+  "Ibiono Ibom",
+  "Ika",
+  "Ikono",
+  "Ikot Abasi",
+  "Ikot Ekpene",
+  "Ini",
+  "Itu",
+  "Mbo",
+  "Mkpat Enin",
+  "Nsit Atai",
+  "Nsit Ibom",
+  "Nsit Ubium",
+  "Obot Akara",
+  "Okobo",
+  "Onna",
+  "Oron",
+  "Oruk Anam",
+  "Udung Uko",
+  "Ukanafun",
+  "Uruan",
+  "Urue-Offong/Oruko",
+  "Uyo",
+];
 
 
 const app = document.querySelector("#app");
@@ -24,6 +57,9 @@ const state = {
   jobs: [],
   currentJob: null,
   isLoading: false,
+  geography: [],
+  selectedScraperState: defaultConfig.state,
+  selectedScraperCity: defaultConfig.city,
   user: readStoredUser(),
   scraperKeywords: readStoredKeywords(readStoredUser()),
 };
@@ -111,6 +147,44 @@ function parseKeywords(value) {
     .split(/[\n,]+/)
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+function normalizeGeographyRows(rows) {
+  return (Array.isArray(rows) ? rows : [])
+    .filter((row) => row?.name && row?.kind)
+    .map((row) => ({
+      id: row.id,
+      name: String(row.name),
+      kind: String(row.kind).toLowerCase(),
+      parent_id: row.parent_id ?? null,
+    }));
+}
+
+function scraperStateOptions() {
+  const apiStates = state.geography.filter((item) => item.kind === "state").map((item) => item.name);
+  return apiStates.length ? apiStates : [defaultConfig.state];
+}
+
+function scraperLocationOptions(selectedState = state.selectedScraperState) {
+  const stateRow = state.geography.find((item) => item.kind === "state" && item.name === selectedState);
+  const apiLocations = state.geography
+    .filter((item) => ["lga", "town", "city"].includes(item.kind))
+    .filter((item) => !stateRow || item.parent_id === stateRow.id)
+    .map((item) => item.name);
+  const locations = apiLocations.length ? apiLocations : FALLBACK_AKWA_IBOM_LGAS;
+  return [...new Set(locations)].sort((a, b) => a.localeCompare(b));
+}
+
+function ensureScraperLocationDefaults() {
+  const states = scraperStateOptions();
+  if (!states.includes(state.selectedScraperState)) {
+    state.selectedScraperState = states.includes(defaultConfig.state) ? defaultConfig.state : states[0];
+  }
+
+  const locations = scraperLocationOptions(state.selectedScraperState);
+  if (!locations.includes(state.selectedScraperCity)) {
+    state.selectedScraperCity = locations.includes(defaultConfig.city) ? defaultConfig.city : locations[0] || "";
+  }
 }
 
 function jobBelongsToCurrentUser(job) {
@@ -311,6 +385,23 @@ async function loadJobs(shouldRender = true) {
     addActivity("Jobs", "Warning", `Could not load scraper jobs: ${error.message}`);
   }
   if (shouldRender) render();
+}
+
+async function loadGeography(shouldRender = true) {
+  if (!window.akirsApi?.fetchGeography) {
+    ensureScraperLocationDefaults();
+    return;
+  }
+
+  try {
+    state.geography = normalizeGeographyRows(await window.akirsApi.fetchGeography());
+  } catch (error) {
+    state.geography = [];
+    addActivity("Locations", "Warning", `Could not load location API: ${error.message}`);
+  }
+
+  ensureScraperLocationDefaults();
+  if (shouldRender && getRoute() === "scraper") render();
 }
 
 function dataBanner() {
@@ -662,6 +753,8 @@ function quickAction(title, body, iconName, href) {
 
 function renderScraper() {
   const job = state.currentJob;
+  ensureScraperLocationDefaults();
+  const locationOptions = scraperLocationOptions();
 
   return `
     <section class="page">
@@ -678,8 +771,8 @@ function renderScraper() {
             ${selectField("Search Type", ["All", "Business Owners", "Business Pages", "Companies", "Entrepreneurs", "Local Services"], "search_type")}
             <div class="form-grid">
               ${inputField("Target Country", defaultConfig.country, "country")}
-              ${staticField("Target State", defaultConfig.state)}
-              ${inputField("City", defaultConfig.city, "city")}
+              ${selectField("Target State", scraperStateOptions(), "state", state.selectedScraperState)}
+              ${selectField("LGA / City", locationOptions, "city", state.selectedScraperCity)}
             </div>
             <details class="fb-login-optional">
               <summary>${icon("lock_open")} Facebook login (optional)</summary>
@@ -996,11 +1089,12 @@ function jobButton(job) {
   `;
 }
 
-function selectField(label, options, name = "") {
+function selectField(label, options, name = "", selectedValue = "") {
+  const selected = selectedValue || options[0] || "";
   return `
     <label>
-      <span class="label">${label}</span>
-      <select ${name ? `name="${name}"` : ""}>${options.map((option) => `<option>${option}</option>`).join("")}</select>
+      <span class="label">${escapeHtml(label)}</span>
+      <select ${name ? `name="${escapeHtml(name)}"` : ""}>${options.map((option) => `<option value="${escapeHtml(option)}" ${option === selected ? "selected" : ""}>${escapeHtml(option)}</option>`).join("")}</select>
     </label>
   `;
 }
@@ -1527,7 +1621,9 @@ async function startScraping() {
   const form = document.querySelector("#scraper-config");
   const startButton = document.querySelector("[data-start-scrape], #start-scraping");
   const formData = form ? new FormData(form) : new FormData();
+  state.selectedScraperState = String(formData.get("state") || state.selectedScraperState || defaultConfig.state).trim();
   const city = String(formData.get("city") || defaultConfig.city).trim();
+  state.selectedScraperCity = city || state.selectedScraperCity || defaultConfig.city;
   const searchType = String(formData.get("search_type") || "All").trim();
 
   // Optional Facebook credentials are accepted ephemerally for a single job and
@@ -1551,7 +1647,8 @@ async function startScraping() {
       method: "POST",
       body: JSON.stringify({
         country: formData.get("country") || defaultConfig.country,
-        locations: city ? [city] : undefined,
+        location_state: state.selectedScraperState || defaultConfig.state,
+        locations: state.selectedScraperCity ? [state.selectedScraperCity] : undefined,
         categories: searchType && searchType !== "All" ? [searchType] : undefined,
         user_keywords: parseKeywords(state.scraperKeywords),
         operator_user_id: state.user?.id,
@@ -1701,6 +1798,22 @@ function bindPageEvents(route) {
     };
   }
 
+  const scraperStateSelect = document.querySelector("#scraper-config select[name='state']");
+  const scraperCitySelect = document.querySelector("#scraper-config select[name='city']");
+  if (scraperStateSelect) {
+    scraperStateSelect.onchange = () => {
+      state.selectedScraperState = scraperStateSelect.value || defaultConfig.state;
+      const locations = scraperLocationOptions(state.selectedScraperState);
+      state.selectedScraperCity = locations.includes(defaultConfig.city) ? defaultConfig.city : locations[0] || "";
+      render();
+    };
+  }
+  if (scraperCitySelect) {
+    scraperCitySelect.onchange = () => {
+      state.selectedScraperCity = scraperCitySelect.value || defaultConfig.city;
+    };
+  }
+
   document.querySelector("#start-scraping")?.addEventListener("click", startScraping);
   document.querySelector("#sign-out")?.addEventListener("click", signOut);
   document.querySelector("[data-pause-job]")?.addEventListener("click", (event) => {
@@ -1736,7 +1849,7 @@ function bindPageEvents(route) {
   document.querySelector("[data-new-scrape]")?.addEventListener("click", () => {
     state.currentJob = null;
     render();
-    document.querySelector("#scraper-config input[name='city']")?.focus();
+    document.querySelector("#scraper-config select[name='city']")?.focus();
   });
   document.querySelectorAll("[data-select-job]").forEach((button) => {
     button.onclick = async () => {
@@ -1880,3 +1993,4 @@ function updateSSEConnection() {
 
 loadData();
 loadJobs(false);
+loadGeography();
