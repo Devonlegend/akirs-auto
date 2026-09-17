@@ -37,14 +37,26 @@ class ChatbotSettings(BaseSettings):
         description="LLM temperature for generation.",
     )
     llm_max_tokens: int = Field(
-        default=1024,
+        default=512,
         ge=1,
         le=4096,
-        description="Maximum tokens in the generated response.",
+        description="Maximum tokens in the generated response. AKIRS answers "
+        "usually need ~180-350 tokens; 1024 wastes ~3x decode time.",
     )
     llm_timeout_seconds: float = Field(
         default=120.0,
         description="HTTP timeout for Ollama API calls.",
+    )
+    ollama_keep_alive: str = Field(
+        default="10m",
+        description="How long Ollama keeps the model in memory (avoids reload "
+        "per request, which costs seconds of load_duration).",
+    )
+    ollama_num_ctx: int = Field(
+        default=2048,
+        ge=512,
+        le=32768,
+        description="Context window (tokens) given to Ollama per request.",
     )
 
     # -- Embeddings ---------------------------------------------------------
@@ -75,10 +87,12 @@ class ChatbotSettings(BaseSettings):
 
     # -- Retrieval ----------------------------------------------------------
     top_k: int = Field(
-        default=10,
+        default=5,
         ge=1,
         le=50,
-        description="Default number of chunks to retrieve per query.",
+        description="Default number of chunks to retrieve per query. 5 yields "
+        "~2500 extracted tokens of context instead of 10; prompt_eval scales "
+        "linearly so fewer chunks = faster first token.",
     )
     relevance_threshold: float = Field(
         default=0.3,

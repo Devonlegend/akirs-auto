@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import uuid
+from typing import AsyncIterator
 
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import StreamingResponse
 
 from chatbot.api.schemas import (
     ChatRequest,
@@ -57,6 +60,13 @@ async def prepare_pipeline() -> None:
     starts and the chatbot falls back to its general conversational mode.
     """
     await _get_pipeline().prepare()
+
+    # Preload the embedding model so the first real query doesn't stall on a
+    # synchronous torch/sentence-transformers load (can be 800ms-2s+ cold).
+    try:
+        await _get_ingestor().embedder.embed_query("warmup")
+    except Exception:
+        logger.exception("Embedder warmup failed (will load lazily on first use).")
 
     try:
         from chatbot.knowledge.loader import ingest_knowledge_base
@@ -178,6 +188,50 @@ async def chat(body: ChatRequest) -> ChatResponse:
         collection=result["collection"],
         retrieved_count=result["retrieved_count"],
         elapsed_ms=result["elapsed_ms"],
+    )
+
+
+@router.post("/chat/stream")
+async def chat_stream(body: ChatRequest) -> StreamingResponse:
+    """Streamed chat: Server-Sent Events (one JSON object per line).
+
+    Frame sequence (each a newline-delimited JSON object):
+      {"type":"start", "collection": "..."}
+      {"type":"sources", "sources": [SourceCitation...]}   <- citations ready fast
+      {"type":"delta", "text": "..."}                       <- one token fragment
+      {"type":"end", "elapsed_ms": 1234, "retrieved_count": 5}
+
+    Consumed by UserInterface/js/chat.js and js/embed.js (which switched from
+    `fetch().json()` to streaming reads), so the user sees the first token in
+    ~300ms instead of waiting for the full generation.
+    """
+    pipeline = _get_pipeline()
+    where = body.metadata_filter or None
+
+    async def event_source() -> AsyncIterator[bytes]:
+        try:
+            async for event in pipeline.ask_stream(
+                collection=body.collection,
+                question=body.question,
+                top_k=body.top_k,
+                where=where,
+                temperature=body.temperature,
+            ):
+                yield (json.dumps(event) + "\n").encode("utf-8")
+        except Exception:
+            logger.exception("Streaming chat failed.")
+            yield (json.dumps({"type": "error", "detail": "Internal error"}).encode(
+                "utf-8"
+            ) + b"\n")
+
+    return StreamingResponse(
+        event_source(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
     )
 
 

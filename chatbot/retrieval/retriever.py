@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import logging
+import re
+import time
 
 from chatbot.config import settings
 from chatbot.embeddings.embedder import Embedder
@@ -10,6 +12,27 @@ from chatbot.vector_store.base import StoredChunk, VectorStore
 from chatbot.vector_store.chroma_store import ChromaVectorStore
 
 logger = logging.getLogger(__name__)
+
+# Fast-path: greetings / capability questions don't need retrieval or embedding.
+_GREETING_RE = re.compile(
+    r"^(hi|hello|hey|good\s*(morning|afternoon|evening)|yo|what\s+can\s+you\s+do"
+    r"|who\s+are\s+you|how\s+are\s+you|thanks|thank\s*you)\b.*$",
+    re.IGNORECASE,
+)
+
+# Simple TTL cache for normalized query embeddings (identical questions won't
+# re-run the embedding model for an hour).
+_EMBED_CACHE: dict[str, tuple[float, list[float]]] = {}
+_EMBED_CACHE_TTL = 3600.0
+_EMBED_CACHE_MAX = 256
+
+
+def is_greeting(question: str) -> bool:
+    """True for short conversational/greeting inputs that skip retrieval."""
+    q = question.strip()
+    if not q or len(q.split()) > 12:
+        return False
+    return bool(_GREETING_RE.match(q))
 
 
 class Retriever:
@@ -56,7 +79,11 @@ class Retriever:
         if not question.strip():
             return []
 
-        query_vec = await self._embedder.embed_query(question)
+        # Greetings / small talk short-circuit before we spend time embedding.
+        if is_greeting(question):
+            return []
+
+        query_vec = await self._cached_embed(question)
         chunks = await self._store.query(
             collection=collection,
             query_embedding=query_vec,
@@ -72,14 +99,27 @@ class Retriever:
         )
         return chunks
 
+    async def _cached_embed(self, question: str) -> list[float]:
+        """Embed *question*, serving cached results for repeats within TTL."""
+        key = " ".join(question.lower().split())
+        now = time.monotonic()
+        hit = _EMBED_CACHE.get(key)
+        if hit and now - hit[0] < _EMBED_CACHE_TTL:
+            return hit[1]
+        vec = await self._embedder.embed_query(question)
+        if len(_EMBED_CACHE) >= _EMBED_CACHE_MAX:
+            _EMBED_CACHE.clear()
+        _EMBED_CACHE[key] = (now, vec)
+        return vec
+
     @property
     def store(self) -> VectorStore:
         """The underlying vector store (for stats / health checks)."""
         return self._store
 
 
-def format_context(chunks: list[StoredChunk], *, max_tokens: int = 2000) -> str:
-    
+def format_context(chunks: list[StoredChunk], *, max_tokens: int = 1200) -> str:
+
     if not chunks:
         return "No relevant context found."
 

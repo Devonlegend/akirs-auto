@@ -67,9 +67,19 @@ class Embedder:
         return embeddings.tolist()
 
     async def embed_query(self, text: str) -> list[float]:
-        """Embed a single query text. Convenience wrapper around :meth:`embed`."""
-        results = await self.embed([text])
-        return results[0]
+        """Embed a single query text. Hot path for retrieval — uses a dedicated
+        single-sample encode (no oversized batch stride, one thread hop)."""
+        if not text.strip():
+            return []
+        model = await asyncio.to_thread(self._get_or_load_model)
+        vec = await asyncio.to_thread(
+            model.encode,
+            [text],
+            batch_size=1,
+            show_progress_bar=False,
+            normalize_embeddings=True,
+        )
+        return vec[0].tolist()
 
     @property
     def dimension(self) -> int:

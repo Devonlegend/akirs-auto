@@ -254,9 +254,11 @@ class OllamaBackend(LLMBackend):
             "model": self._model,
             "messages": messages,
             "stream": False,
+            "keep_alive": settings.ollama_keep_alive,
             "options": {
                 "temperature": temp,
                 "num_predict": max_tok,
+                "num_ctx": settings.ollama_num_ctx,
             },
         }
 
@@ -288,6 +290,69 @@ class OllamaBackend(LLMBackend):
                 "prompt_eval_count": data.get("prompt_eval_count", 0),
             },
         )
+
+    async def generate_stream(
+        self,
+        system_prompt: str,
+        context: str,
+        question: str,
+        *,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+    ):
+        """Stream the LLM's answer token-by-token (Ollama ``stream: true``).
+
+        Yields ``(delta, final_metadata)`` pairs.  ``delta`` is the next text
+        fragment (may be empty on intermediate frames); the final yielded item
+        carries ``final_metadata=True`` with the Ollama response metadata
+        (``total_duration``, ``load_duration``, ``prompt_eval_count``,
+        ``eval_count``) so callers can log/measure TTFB and decode speed.
+        """
+        temp = temperature if temperature is not None else settings.llm_temperature
+        max_tok = max_tokens if max_tokens is not None else settings.llm_max_tokens
+
+        messages: list[dict] = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        user_content = f"Context:\n{context}\n\nQuestion: {question}"
+        messages.append({"role": "user", "content": user_content})
+
+        payload = {
+            "model": self._model,
+            "messages": messages,
+            "stream": True,
+            "keep_alive": settings.ollama_keep_alive,
+            "options": {
+                "temperature": temp,
+                "num_predict": max_tok,
+                "num_ctx": settings.ollama_num_ctx,
+            },
+        }
+
+        logger.debug("Streaming Ollama model=%s ...", self._model)
+        resp = await self._request_with_retry(
+            "POST",
+            f"{self._base_url}{_OLLAMA_CHAT_ENDPOINT}",
+            json=payload,
+        )
+        # Ollama streams `text/event-stream` chunked lines of JSON.
+        async for line in resp.aiter_lines():
+            if not line.strip():
+                continue
+            try:
+                import json
+
+                evt = json.loads(line)
+            except ValueError:
+                continue
+            if evt.get("error"):
+                raise RuntimeError(f"Ollama stream error: {evt['error']}")
+            delta = evt.get("message", {}).get("content", "")
+            if delta:
+                yield delta, False
+            if evt.get("done"):
+                yield "", True
+                return
 
     @override
     async def health_check(self) -> bool:

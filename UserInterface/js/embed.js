@@ -233,6 +233,7 @@
     div.textContent = text;
     messagesList.appendChild(div);
     messagesList.scrollTop = messagesList.scrollHeight;
+    return div;
   }
 
   function appendLoading() {
@@ -256,7 +257,7 @@
     submitBtn.disabled = true;
 
     try {
-      const response = await fetch(`${baseUrl}/chatbot/chat`, {
+      const response = await fetch(`${baseUrl}/chatbot/chat/stream`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -270,13 +271,53 @@
         })
       });
 
-      if (!response.ok) {
+      if (!response.ok || !response.body) {
         throw new Error("API request failed");
       }
 
-      const data = await response.json();
+      // Consume the newline-delimited JSON stream and render tokens as they arrive,
+      // so the user sees the first token in ~300ms instead of after full generation.
       loadingEl.remove();
-      appendMessage(data.answer, false);
+      const msgEl = appendMessage("", false);
+      let answer = "";
+      let buffer = "";
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder("utf-8");
+      let lastRender = 0;
+
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        let nl;
+        while ((nl = buffer.indexOf("\n")) !== -1) {
+          const line = buffer.slice(0, nl).trim();
+          buffer = buffer.slice(nl + 1);
+          if (!line) continue;
+
+          let frame;
+          try {
+            frame = JSON.parse(line);
+          } catch (_) {
+            continue;
+          }
+
+          if (frame.type === "error") {
+            throw new Error(frame.detail || "Streaming error");
+          }
+          if (frame.type === "delta" && frame.text) {
+            answer += frame.text;
+            const now = performance.now();
+            if (now - lastRender > 100) {
+              lastRender = now;
+              msgEl.textContent = answer;
+              messagesList.scrollTop = messagesList.scrollHeight;
+            }
+          }
+        }
+      }
+      msgEl.textContent = answer || "I couldn't generate a response.";
     } catch (err) {
       console.error(err);
       loadingEl.remove();
