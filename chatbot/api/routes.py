@@ -59,7 +59,15 @@ async def prepare_pipeline() -> None:
     content to retrieve. KB ingest failures are non-fatal — the backend still
     starts and the chatbot falls back to its general conversational mode.
     """
-    await _get_pipeline().prepare()
+    # Warm the LLM backend (server up, model present). This is deliberately
+    # non-fatal and ordered first-but-isolated: knowledge-base ingest below only
+    # needs the embedder, so a missing/unreachable LLM must not prevent it.
+    try:
+        await _get_pipeline().prepare()
+    except Exception:
+        logger.exception(
+            "LLM backend warm-up failed — chat will retry lazily on first use."
+        )
 
     # Preload the embedding model so the first real query doesn't stall on a
     # synchronous torch/sentence-transformers load (can be 800ms-2s+ cold).

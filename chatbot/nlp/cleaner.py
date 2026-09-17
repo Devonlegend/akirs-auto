@@ -7,7 +7,8 @@ import unicodedata
 
 
 # Regex patterns compiled once at module level.
-_MULTI_WHITESPACE = re.compile(r"\s+")
+_HORIZONTAL_WS = re.compile(r"[^\S\n]+")  # spaces/tabs, but not newlines
+_MULTI_BLANK_LINE = re.compile(r"\n[ \t]*\n[ \t\n]*")  # paragraph breaks
 _CONTROL_CHARS = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]")
 # Zero-width and other invisible characters that add noise.
 _INVISIBLE_CHARS = re.compile(r"[​‌‍‎‏  ﻿]")
@@ -22,7 +23,9 @@ def clean_text(text: str, *, strip_control_chars: bool = True) -> str:
     2. Replace common smart quotes / dashes with ASCII equivalents.
     3. Strip zero-width and invisible characters.
     4. Optionally strip remaining ASCII control characters.
-    5. Collapse all whitespace (including newlines) to a single space.
+    5. Collapse horizontal whitespace and normalize runs of blank lines to a
+       single paragraph break (``\\n\\n``). Paragraph structure is preserved so
+       the chunker can split on meaningful boundaries rather than one giant blob.
     6. Trim leading / trailing whitespace.
 
     Args:
@@ -49,8 +52,9 @@ def clean_text(text: str, *, strip_control_chars: bool = True) -> str:
     if strip_control_chars:
         text = _CONTROL_CHARS.sub("", text)
 
-    # 5. Collapse whitespace.
-    text = _MULTI_WHITESPACE.sub(" ", text)
+    # 5. Collapse horizontal whitespace, keeping paragraph breaks intact.
+    text = _HORIZONTAL_WS.sub(" ", text)
+    text = _MULTI_BLANK_LINE.sub("\n\n", text)
 
     # 6. Trim.
     return text.strip()

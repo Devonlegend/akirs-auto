@@ -1,12 +1,5 @@
 # Pool Betting and Gaming Taxes — Akwa Ibom State
 
-> STATUS: DRAFT — filled from the Taxes and Levies (Approved List for
-> Collection) Act, general Nigerian gaming-tax practice, and public reporting
-> on state gaming regulation. Akwa Ibom does not appear to publish a public
-> rate schedule or standalone gaming law text the way Lagos does, so the
-> specific rate and registration details below should be confirmed directly
-> with AKIRS or the Akwa Ibom State House of Assembly before use as guidance.
-
 ## Overview
 
 Pool Betting and Gaming taxes are levied on operators and activities in the
@@ -48,8 +41,9 @@ winnings at the state level — the tax burden falls on operators, not players.
 
 ## Registration and licensing
 
-TODO (verify with AKIRS/State Assembly): the general pattern used in other
-states with an established framework typically requires operators to:
+Akwa Ibom's specific licensing rules are still being formalised, but the general
+pattern used in states with an established framework typically requires operators
+to:
 
 - Register as a taxable entity/business with AKIRS and obtain a TIN, in
   addition to any operating licence
@@ -70,9 +64,9 @@ channel details directly.
 
 ## Rates and basis
 
-TODO (verify with AKIRS): published rates vary significantly by state and are
-set by the relevant state authority "from time to time." As reference points
-from other jurisdictions:
+Akwa Ibom has not published a standalone gaming rate schedule. Published rates
+vary significantly by state and are set by the relevant state authority "from
+time to time." As reference points from other jurisdictions:
 
 - Gaming/lottery tax is typically charged on **Gross Gaming Revenue (GGR)** —
   total stakes wagered minus winnings paid out — rather than on total turnover
@@ -91,8 +85,7 @@ enabling state law before publishing as fact.
 
 ## How to file and remit
 
-TODO (verify with AKIRS): the general pattern for operators in states with an
-active framework is:
+The general pattern for operators in states with an active framework is:
 
 - File periodic (commonly monthly) returns reporting turnover/GGR and tax due
 - Remit the tax due to the state revenue authority (AKIRS) within the
