@@ -59,8 +59,8 @@ Type {_CYAN}/help{_RESET} for commands, or just ask a question.
 class ChatbotCLI:
     """Interactive command-line interface for the RAG chatbot."""
 
-    def __init__(self, collection: str = "default") -> None:
-        self.collection = collection
+    def __init__(self, collection: str | None = None) -> None:
+        self.collection = collection or settings.knowledge_collection
         self._pipeline: RAGPipeline | None = None
         self._ingestor: Ingestor | None = None
 
@@ -327,8 +327,11 @@ def main() -> None:
     parser.add_argument(
         "--collection",
         "-c",
-        default="default",
-        help="Initial collection to use (default: 'default').",
+        default=settings.knowledge_collection,
+        help=(
+            "Initial collection to use "
+            f"(default: '{settings.knowledge_collection}')."
+        ),
     )
     args = parser.parse_args()
 

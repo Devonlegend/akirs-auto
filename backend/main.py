@@ -1,3 +1,4 @@
+import logging
 import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -31,6 +32,9 @@ from src.db.base import get_engine as get_jobs_engine
 from src.db import models as _jobs_models  # noqa: F401 - register scraper tables
 
 
+logger = logging.getLogger(__name__)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
@@ -42,7 +46,25 @@ async def lifespan(app: FastAPI):
     async with AsyncSessionLocal() as session:
         await seed_default_users(session)
         await seed_default_admin(session)
-    yield
+
+    # Warm the LLM backend and (re)build the AKIRS knowledge base from
+    # chatbot/knowledge/*.md. Wrapped so an unreachable/misconfigured LLM never
+    # blocks the API from booting — the chatbot then degrades to its general
+    # conversational mode until the backend is available.
+    try:
+        await prepare_pipeline()
+    except Exception:
+        logger.exception(
+            "Chatbot startup failed — API will still boot without a warm KB."
+        )
+
+    try:
+        yield
+    finally:
+        try:
+            await shutdown_pipeline()
+        except Exception:
+            logger.exception("Chatbot shutdown failed.")
 
 
 app = FastAPI(title="Akirs Auto Backend", lifespan=lifespan)

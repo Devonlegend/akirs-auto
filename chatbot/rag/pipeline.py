@@ -9,10 +9,16 @@ from chatbot.config import settings
 from chatbot.llm.base import LLMBackend, LLMResponse
 from chatbot.llm.ollama_backend import OllamaBackend
 from chatbot.rag.prompt_builder import GENERAL_SYSTEM_PROMPT, build_prompt
-from chatbot.retrieval.retriever import Retriever, format_context
+from chatbot.retrieval.retriever import Retriever, format_context, is_greeting
 from chatbot.vector_store.base import StoredChunk
 
 logger = logging.getLogger(__name__)
+
+# Simple bounded TTL cache keyed by (collection, question, top_k) so identical
+# questions within a short window don't re-run embedding + retrieval + LLM.
+_CACHE: dict[tuple, tuple[float, dict]] = {}
+_CACHE_TTL = 300.0  # 5 minutes
+_CACHE_MAX = 128
 
 
 class RAGPipeline:
@@ -72,6 +78,60 @@ class RAGPipeline:
         """
         t0 = time.monotonic()
 
+        # Greeting / small talk: skip retrieval+embedding entirely and answer
+        # conversationally with the general prompt (no sources).
+        if is_greeting(question):
+            response = await self._llm.generate(
+                system_prompt=GENERAL_SYSTEM_PROMPT,
+                context="",
+                question=question,
+                temperature=temperature,
+            )
+            return {
+                "answer": response.content,
+                "sources": [],
+                "collection": collection,
+                "elapsed_ms": (time.monotonic() - t0) * 1000,
+                "retrieved_count": 0,
+            }
+
+        # Cache hit: identical question recently answered → return it directly.
+        key = _cache_key(collection, question, top_k)
+        now = time.monotonic()
+        hit = _CACHE.get(key)
+        if hit and now - hit[0] < _CACHE_TTL:
+            cached = dict(hit[1])
+            cached["elapsed_ms"] = (now - hit[0]) * 1000  # reflect cache time
+            cached["cached"] = True
+            return cached
+
+        result = await self._run_ask(
+            collection=collection,
+            question=question,
+            top_k=top_k,
+            system_prompt=system_prompt,
+            where=where,
+            temperature=temperature,
+            t0=t0,
+        )
+
+        if len(_CACHE) >= _CACHE_MAX:
+            _CACHE.clear()
+        _CACHE[key] = (time.monotonic(), result)
+        return result
+
+    async def _run_ask(
+        self,
+        collection: str,
+        question: str,
+        *,
+        top_k: int | None = None,
+        system_prompt: str | None = None,
+        where: dict | None = None,
+        temperature: float | None = None,
+        t0: float,
+    ) -> dict:
+        """Core (uncached) RAG path: retrieve → filter → prompt → generate."""
         # 1. Retrieve relevant chunks.
         chunks = await self._retriever.retrieve(
             collection=collection,
@@ -145,6 +205,88 @@ class RAGPipeline:
             "retrieved_count": len(relevant),
         }
 
+    async def ask_stream(
+        self,
+        collection: str,
+        question: str,
+        *,
+        top_k: int | None = None,
+        system_prompt: str | None = None,
+        where: dict | None = None,
+        temperature: float | None = None,
+    ):
+        """Streamed variant of :meth:`ask`.
+
+        Yields a sequence of dicts consumed by the SSE endpoint:
+        - ``{"type": "start", ...}``   (metadata: collection, question)
+        - ``{"type": "sources", ...}`` (citations ready before TTFB)
+        - ``{"type": "delta", ...}``   (one token fragment)
+        - ``{"type": "end", ...}``     (elapsed_ms, retrieved_count)
+
+        NOT cached (one-shot streaming) and preserves the greeting fast-path.
+        """
+        t0 = time.monotonic()
+        yield {"type": "start", "collection": collection}
+
+        # Greeting fast-path: no retrieval/sources — just stream a general reply.
+        if is_greeting(question):
+            async for delta, _final in self._llm.generate_stream(
+                system_prompt=GENERAL_SYSTEM_PROMPT,
+                context="",
+                question=question,
+                temperature=temperature,
+            ):
+                if delta:
+                    yield {"type": "delta", "text": delta}
+            yield {"type": "end", "elapsed_ms": (time.monotonic() - t0) * 1000,
+                   "retrieved_count": 0}
+            return
+
+        chunks = await self._retriever.retrieve(
+            collection=collection,
+            question=question,
+            top_k=top_k,
+            where=where,
+        )
+        relevant = [c for c in chunks if c.score >= settings.relevance_threshold]
+
+        if not relevant:
+            async for delta, _final in self._llm.generate_stream(
+                system_prompt=GENERAL_SYSTEM_PROMPT,
+                context="",
+                question=question,
+                temperature=temperature,
+            ):
+                if delta:
+                    yield {"type": "delta", "text": delta}
+            yield {"type": "end", "elapsed_ms": (time.monotonic() - t0) * 1000,
+                   "retrieved_count": 0}
+            return
+
+        context = format_context(relevant)
+        sys_prompt, user_context = build_prompt(
+            question=question,
+            context=context,
+            system_prompt=system_prompt,
+        )
+
+        # Emit sources immediately so the frontend can render citations while the
+        # model is still generating.
+        yield {"type": "sources", "sources": _build_sources(relevant)}
+
+        async for delta, _final in self._llm.generate_stream(
+            system_prompt=sys_prompt,
+            context=user_context,
+            question=question,
+            temperature=temperature,
+        ):
+            if delta:
+                yield {"type": "delta", "text": delta}
+
+        yield {"type": "end",
+               "elapsed_ms": (time.monotonic() - t0) * 1000,
+               "retrieved_count": len(relevant)}
+
     async def prepare(self) -> None:
         """Ensure the LLM backend is ready (server up, model pulled, warmed).
 
@@ -194,6 +336,11 @@ class RAGPipeline:
 # ------------------------------------------------------------------
 # Helpers
 # ------------------------------------------------------------------
+
+
+def _cache_key(collection: str, question: str, top_k: int | None) -> tuple:
+    """Stable cache key for the pipeline query cache."""
+    return (collection, " ".join(question.lower().split()), top_k or settings.top_k)
 
 
 def _build_sources(chunks: list[StoredChunk]) -> list[dict]:

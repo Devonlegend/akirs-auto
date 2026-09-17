@@ -85,7 +85,7 @@
     const question = input.value.trim();
     if (!question) return;
 
-    if (!window.akirsApi?.sendChat) {
+    if (!window.akirsApi?.API_BASE) {
       messages.push({
         role: "assistant",
         text: "The assistant isn't available right now. Please reload the page once the backend is running.",
@@ -98,16 +98,66 @@
     input.value = "";
     input.style.height = "auto";
     messages.push({ role: "user", text: question });
-    const placeholder = { role: "assistant", text: "", pending: true };
+    const placeholder = { role: "assistant", text: "", pending: true, streaming: true };
     messages.push(placeholder);
     renderMessages();
     updateSendButton();
 
     try {
-      const result = await window.akirsApi.sendChat(question, KB_COLLECTION);
+      // Stream the answer token-by-token (newline-delimited JSON per frame).
+      const resp = await fetch(`${window.akirsApi.API_BASE}/chatbot/chat/stream`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question, collection: KB_COLLECTION }),
+      });
+      if (!resp.ok || !resp.body) {
+        throw new Error(`HTTP ${resp.status}`);
+      }
+
       placeholder.pending = false;
-      placeholder.text = (result && result.answer) || "I couldn't generate a response.";
-      placeholder.sources = (result && result.sources) || [];
+      let buffer = "";
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder("utf-8");
+      // Throttle re-renders to ~10/s so typing isn't repainted on every token.
+      let lastRender = 0;
+
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        let nl;
+        while ((nl = buffer.indexOf("\n")) !== -1) {
+          const line = buffer.slice(0, nl).trim();
+          buffer = buffer.slice(nl + 1);
+          if (!line) continue;
+
+          let frame;
+          try {
+            frame = JSON.parse(line);
+          } catch (_) {
+            continue;
+          }
+
+          if (frame.type === "sources") {
+            placeholder.sources = frame.sources || [];
+            renderMessages();
+          } else if (frame.type === "delta" && frame.text) {
+            placeholder.text += frame.text;
+            const now = performance.now();
+            if (now - lastRender > 100 || placeholder.text.length - (placeholder._lastLen || 0) > 40) {
+              lastRender = now;
+              placeholder._lastLen = placeholder.text.length;
+              renderMessages();
+            }
+          } else if (frame.type === "error") {
+            throw new Error(frame.detail || "Streaming error");
+          }
+        }
+      }
+      if (!placeholder.text) {
+        placeholder.text = "I couldn't generate a response.";
+      }
     } catch (error) {
       placeholder.pending = false;
       placeholder.text =
@@ -115,6 +165,7 @@
       placeholder.error = String(error?.message || error);
     } finally {
       sending = false;
+      delete placeholder._lastLen;
       renderMessages();
       updateSendButton();
     }
