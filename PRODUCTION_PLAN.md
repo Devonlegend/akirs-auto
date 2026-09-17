@@ -1,26 +1,25 @@
-# Production Plan — AKIRS RAG Chatbot (CPU-only server)
+# Production Plan — AKIRS RAG Chatbot (CPU-only server, llama.cpp)
 
 Status: **PLAN ONLY — not implemented.**
 
-The production server is **CPU-only (no GPU)**. This document revises the
-earlier vLLM plan accordingly: **vLLM is not the right choice on CPU.** It also
-lists the surrounding hardening the chatbot needs before production.
+The production server is **CPU-only (no GPU)**. We will serve generation with
+**llama.cpp** (`llama-server`) instead of vLLM. vLLM is GPU-first; its CPU
+backend is experimental and generally slower than llama.cpp for a small model.
+This document also lists the surrounding hardening the chatbot needs before
+production.
 
-> Supersedes the previous `VLLM_PRODUCTION_PLAN.md`.
+> Supersedes the earlier vLLM plan.
 
 ---
 
-## 1. Constraint: CPU-only
+## 1. Decision
 
-vLLM is built for GPU batching. A CPU backend exists but is experimental,
-typically requires AVX-512-class CPUs, and is generally **slower than
-llama.cpp/Ollama** for a small model like Phi-4-mini. On a CPU-only box, serving
-a ~3.8B model through vLLM adds operational complexity for little or no gain.
-
-**Recommendation: keep the existing Ollama setup** (it already runs on CPU with
-GGUF, and the pipeline defaults to it), or move to a **llama.cpp server** if you
-want tighter control over threads/quantization. Both are OpenAI-compatible, so
-they can sit behind one abstraction.
+- **LLM serving:** llama.cpp `llama-server` (CPU), OpenAI-compatible HTTP API.
+- **Model:** Phi-4-mini-instruct, **GGUF, Q4_K_M** quant (fallback Q5_K_M if
+  quality matters more than speed).
+- **Why:** purpose-built for CPU inference, tight control over threads/batch/
+  quant, single static binary or container, OpenAI-compatible so it plugs into
+  the existing `LLMBackend` seam.
 
 ---
 
@@ -30,7 +29,7 @@ they can sit behind one abstraction.
 |-------|-------|-------|
 | Pipeline | `chatbot/rag/pipeline.py` | Backend-agnostic: `RAGPipeline.__init__(retriever=None, llm=None)`; defaults to `OllamaBackend()` at `pipeline.py:45`. |
 | LLM interface | `chatbot/llm/base.py` | `LLMBackend` ABC requires `generate()` + `health_check()`; `generate_stream`, `ensure_ready`, `close` are optional (duck-typed). |
-| Ollama backend | `chatbot/llm/ollama_backend.py` | NDJSON streaming, `keep_alive`/`num_ctx`, auto-start + pull. Runs on CPU. |
+| Ollama backend | `chatbot/llm/ollama_backend.py` | NDJSON streaming, `keep_alive`/`num_ctx`, auto-start + pull. (Stays as the local dev default.) |
 | Streaming route | `chatbot/api/routes.py` `POST /chatbot/chat/stream` | Consumes `pipeline.ask_stream`; newline-delimited JSON frames. |
 | Frontend | `UserInterface/js/chat.js`, `js/embed.js` | Consume the streaming endpoint token-by-token. |
 | Knowledge base | `chatbot/knowledge/*.md` | 13 files, auto-ingested at startup into `akirs_tax` (284 chunks). |
@@ -38,48 +37,73 @@ they can sit behind one abstraction.
 | Embeddings | `chatbot/embeddings/embedder.py` | `all-MiniLM-L6-v2` (384-dim) on CPU, in-process. |
 | Vector store | `chatbot/vector_store/chroma_store.py` | Local ChromaDB `PersistentClient` at `chatbot_data/vector_db`. |
 
-Seams that make swapping the LLM server easy: `RAGPipeline(llm=...)` injection
-and the optional hooks in `pipeline.py:295` (`prepare`) / `pipeline.py:304`
-(`close`).
+Seams that make this a drop-in: `RAGPipeline(llm=...)` injection and the
+optional hooks in `pipeline.py:295` (`prepare`) / `pipeline.py:304` (`close`).
 
 ---
 
-## 3. LLM serving on CPU
+## 3. llama.cpp serving
 
-### 3.1 Option A — keep Ollama (lowest change)
-- Already the default and already CPU-capable. Production work is mostly
-  configuration, not code:
-  - Quantized model (`phi4-mini` ships quantized; or a `:q4_K_M` tag).
-  - `OLLAMA_KEEP_ALIVE` (already `10m` via `CHATBOT_OLLAMA_KEEP_ALIVE`) keeps the
-    model resident between requests.
-  - `OLLAMA_NUM_PARALLEL=1` (default) avoids thrashing; CPU requests are
-    effectively serialized anyway.
-  - Cap threads to physical cores (`OLLAMA_NUM_THREAD`).
-- Keep `CHATBOT_OLLAMA_NUM_CTX=2048` (already set) — smaller context = less KV
-  memory and faster prompt eval on CPU.
+### 3.1 Get the model
+- Obtain a pre-quantized GGUF of `Phi-4-mini-instruct` (community quants on
+  Hugging Face — e.g. bartowski / unsloth), file such as
+  `Phi-4-mini-instruct-Q4_K_M.gguf`.
+- Keep the GGUF on the host/volume so restarts don't re-download.
 
-### 3.2 Option B — llama.cpp server
-- Run `llama-server -m phi-4-mini.Q4_K_M.gguf -c 2048 -t <physical-cores>`.
-- Exposes an OpenAI-compatible `/v1/chat/completions` with streaming.
-- More knobs (threads, batch, quant level) than Ollama; useful if you need to
-  squeeze latency out of a specific CPU.
-- Still fully CPU, no GPU dependency.
+### 3.2 Run `llama-server`
+Either the binary or the official container
+(`ghcr.io/ggml-org/llama.cpp:server`):
 
-### 3.3 Optional abstraction: `OpenAICompatBackend`
-If you want to keep the door open for vLLM (later, on a GPU host), llama.cpp, or
-LocalAI, add one OpenAI-compatible backend and select it by config:
+```bash
+llama-server \
+  -m /models/Phi-4-mini-instruct-Q4_K_M.gguf \
+  --host 0.0.0.0 --port 8080 \
+  -c 2048 \          # context window (matches CHATBOT_OLLAMA_NUM_CTX today)
+  -t $(nproc) \      # threads ≈ physical cores
+  -ngl 0 \           # no GPU offload (CPU-only)
+  --parallel 1 \     # one slot: CPU decode is compute-bound, avoid thrash
+  --jinja \          # use the model's chat template
+  --cache-type-k q8_0 --cache-type-v q8_0   # quantize KV cache to save RAM
+```
 
-- `chatbot/llm/openai_compat_backend.py`
-  - `generate()` → `POST {base}/v1/chat/completions` (`stream:false`).
-  - `generate_stream()` → `stream:true`, parse SSE (`data: {...}`, `data:
-    [DONE]`), yield `(delta, False)` then `("", True)` — matching the
-    `(delta, final)` contract in `pipeline.py:260-284`.
-  - `health_check()` → `GET {base}/v1/models`.
-- Config: `llm_backend: "ollama" | "openai_compat"`, `openai_compat_base_url`,
-  `openai_compat_model`, `openai_compat_api_key`.
-- This works against llama.cpp now and vLLM/OpenAI later with no code change.
-- Note: Ollama itself also exposes an OpenAI-compatible `/v1` endpoint, so the
-  same backend can drive Ollama if desired.
+- Exposes OpenAI-compatible endpoints: `/v1/chat/completions`, `/v1/models`,
+  plus `/health`.
+- Streaming is SSE: `data: {...}` frames ending with `data: [DONE]`.
+
+### 3.3 Implement `LlamaCppBackend`
+New file: `chatbot/llm/llamacpp_backend.py`, subclassing `LLMBackend`
+(OpenAI-compatible; also reusable for vLLM/OpenAI later).
+
+- `generate(...)` → `POST {base}/v1/chat/completions` (`stream:false`); messages
+  are `[{"role":"system",...},{"role":"user","content": f"Context:\n{context}\n\nQuestion: {question}"}]`
+  (same shape `OllamaBackend` uses); map `choices[0].message.content` →
+  `LLMResponse.content`, `usage.total_tokens` → `LLMResponse.total_tokens`.
+- `generate_stream(...)` → `stream:true`; parse SSE lines:
+  - `data: [DONE]` → yield `("", True)` and return.
+  - `data: {...}` → `choices[0].delta.content` → yield `(delta, False)`.
+  - **Must match the `(delta, final_metadata_bool)` contract** used by
+    `ask_stream` (`pipeline.py:260-284`).
+- `health_check()` → `GET {base}/health` (or `/v1/models`).
+- `close()` → close the shared `httpx.AsyncClient`.
+- No `ensure_ready()` — the model is preloaded by the `llama-server` process.
+- Retries: reuse the transient-only pattern from `ollama_backend.py:57-89`.
+
+### 3.4 Config + selection
+`chatbot/config.py` — add:
+
+```python
+llm_backend: Literal["ollama", "llamacpp"] = "ollama"
+llamacpp_base_url: str = "http://localhost:8080"
+llamacpp_model: str = "phi-4-mini"      # label used in logs/health only
+llamacpp_api_key: str = ""              # optional
+```
+
+- Add a `build_llm_backend()` factory and use it in `RAGPipeline.__init__`
+  instead of the hardcoded `OllamaBackend()`.
+- `ollama_keep_alive` / `ollama_num_ctx` stay Ollama-only; for llama.cpp the
+  context window is `llama-server -c 2048`.
+- Fix `RAGPipeline.health_check()` (`pipeline.py:315`) — it reports
+  `settings.ollama_model` unconditionally; report the active backend's model.
 
 ---
 
@@ -87,17 +111,19 @@ LocalAI, add one OpenAI-compatible backend and select it by config:
 
 - Phi-4-mini (~3.8B) at Q4 on a modern multi-core CPU is roughly **single-digit
   to low-teens tokens/sec**; prompt-eval (reading retrieved context) is faster
-  than decode. Measure on the actual hardware before committing to SLOs.
+  than decode. Measure on the target CPU before committing to SLOs.
 - **Concurrency is limited**: CPU decode is compute-bound, so parallel chats
-  share cores and each slows down. For a public widget, plan for queueing
-  (e.g. `OLLAMA_NUM_PARALLEL=1`) rather than true concurrency.
+  share cores and each slows down. `--parallel 1` (queueing) is the sane default
+  for a public widget.
 - Levers if latency is too high:
-  - Smaller/quantized model (e.g. Qwen2.5-3B, Llama-3.2-3B, Phi-3.5-mini) at Q4.
-  - Lower `num_ctx` (fewer retrieved tokens). `CHATBOT_TOP_K` is already 5.
+  - Lower quant (Q4_K_M / Q3_K_M) or a smaller model (Qwen2.5-3B, Llama-3.2-3B,
+    Phi-3.5-mini) at Q4.
+  - Smaller `-c` (fewer retrieved tokens). `CHATBOT_TOP_K` is already 5.
   - Cap `CHATBOT_LLM_MAX_TOKENS` (already 512) so answers don't ramble.
+  - Tune `-t`, `-b`/`-ub`, and `--cache-type-k/v`.
   - Shorter system prompt / fewer context chunks.
-- The RAG layer is cheap on CPU: embeddings for retrieval are a single short
-  encode per query (`chatbot/embeddings/embedder.py`), not a bottleneck.
+- The RAG layer is cheap on CPU: retrieval is a single short embedding per query
+  (`chatbot/embeddings/embedder.py`), not a bottleneck.
 
 ---
 
@@ -128,13 +154,15 @@ LocalAI, add one OpenAI-compatible backend and select it by config:
   `/chatbot/*` is public. In production, remove that mount and expose only the
   key-gated `/widget-api/*` surface (`chatbot/asgi.py`), or add auth.
 
-### 5.5 Fix `docker-compose.yml`
-The current commands reference a non-existent `akirs` package:
-- `api.command: uvicorn akirs.api.app:app` → should be `backend.main:app`.
-- `worker.command: celery -A akirs.tasks.celery_app` → should be the real
-  Celery app (`src.tasks.celery_app:celery_app`).
-Point the API at the LLM host via env (`CHATBOT_OLLAMA_BASE_URL`, or
-`CHATBOT_LLM_BACKEND=openai_compat` + `CHATBOT_OPENAI_COMPAT_BASE_URL`).
+### 5.5 `docker-compose.yml`
+- Add a `llamacpp` service (image `ghcr.io/ggml-org/llama.cpp:server`, GGUF
+  mounted from a volume, port 8080, the flags from §3.2).
+- Point the API at it: `CHATBOT_LLM_BACKEND=llamacpp`,
+  `CHATBOT_LLAMACPP_BASE_URL=http://llamacpp:8080`.
+- Fix the stale commands that reference a non-existent `akirs` package:
+  - `api.command: uvicorn akirs.api.app:app` → `backend.main:app`.
+  - `worker.command: celery -A akirs.tasks.celery_app` →
+    `src.tasks.celery_app:celery_app`.
 
 ### 5.6 Observability
 - The stream `end` frame already carries `elapsed_ms` / `retrieved_count`
@@ -144,14 +172,14 @@ Point the API at the LLM host via env (`CHATBOT_OLLAMA_BASE_URL`, or
 
 ## 6. Rollout / verification
 
-1. Decide LLM serving: keep Ollama, or deploy llama.cpp server (OpenAI-compatible).
-2. (If needed) implement `OpenAICompatBackend`; unit-test `generate` /
-   `generate_stream` with a fake httpx client (mirror
-   `tests/test_chatbot_stream.py`).
-3. Benchmark on the target CPU: tokens/sec, TTFB, and behaviour under 2-3
+1. Download the GGUF and start `llama-server`; confirm `/health` and
+   `/v1/models` respond.
+2. Implement `LlamaCppBackend`; unit-test `generate` / `generate_stream` with a
+   fake httpx client (mirror `tests/test_chatbot_stream.py`).
+3. Set `CHATBOT_LLM_BACKEND=llamacpp`; smoke test
+   `POST /chatbot/chat/stream`: frames `start → sources → delta… → end`.
+4. Benchmark on the target CPU: tokens/sec, TTFB, and behaviour under 2-3
    concurrent chats. Pick model + quant accordingly.
-4. Smoke test `POST /chatbot/chat/stream`: confirm frames
-   `start → sources → delta… → end`.
 5. Verify restart safety: KB persists without a redundant re-embed.
 6. Lock down the API surface and confirm the widget path still works.
 
@@ -159,15 +187,18 @@ Point the API at the LLM host via env (`CHATBOT_OLLAMA_BASE_URL`, or
 
 ## 7. Task checklist
 
-- [ ] Decide Ollama vs llama.cpp server (both CPU)
-- [ ] Tune model/quant + threads + `num_ctx` on the target CPU
-- [ ] Benchmark tokens/sec, TTFB, concurrency; set expectations
-- [ ] (Optional) `chatbot/llm/openai_compat_backend.py` + config + factory
+- [ ] Download/place Phi-4-mini Q4_K_M GGUF on the server
+- [ ] Run `llama-server` (CPU flags: `-c 2048 -t <cores> -ngl 0 --parallel 1 --jinja`)
+- [ ] `chatbot/llm/llamacpp_backend.py` (generate, generate_stream, health_check, close)
+- [ ] `chatbot/config.py`: `llm_backend`, `llamacpp_base_url`, `llamacpp_model`, `llamacpp_api_key`
+- [ ] `build_llm_backend()` factory; use in `RAGPipeline.__init__`
 - [ ] Fix `RAGPipeline.health_check()` model reporting (`pipeline.py:315`)
+- [ ] Unit tests for the llama.cpp backend (faked HTTP)
 - [ ] Vector store: volume/prebuild + gate startup ingest + multi-worker decision
 - [ ] Skip redundant KB re-embed via knowledge-dir hash
 - [ ] Lock down `/chatbot/*` (auth or remove main-app mount)
-- [ ] Fix `docker-compose.yml` commands
+- [ ] Add `llamacpp` service + fix commands in `docker-compose.yml`
+- [ ] Benchmark tokens/sec, TTFB, concurrency; set expectations
 - [ ] Add token/TTFB metrics
 
 ---
