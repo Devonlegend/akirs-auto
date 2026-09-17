@@ -82,7 +82,7 @@ AKIRS is organised into directorates and units, including:
 
 ## Leadership and board
 
-The Executive Chairman of AKIRS is **Sir Okon Okon**, appointed in 2017 as the
+The Executive Chairman of AKIRS is **Mr Okon Okon**, appointed in 2017 as the
 pioneer Executive Chairman with a mandate to transform the agency, and
 subsequently reappointed. He is also a member of the Presidential Committee on
 Fiscal Policy and Tax Reform.
