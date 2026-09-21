@@ -28,6 +28,18 @@ def upgrade() -> None:
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index(op.f('ix_advertisers_fb_url'), 'advertisers', ['fb_url'], unique=True)
+    # Auth table. Created here (pre-rename shape: `password_hash`) because
+    # revision 95b2cac7b7c9 alters it into `password` + `account_type`, and
+    # `admins` / `embed_keys` carry FKs to it. Without this a fresh DB fails.
+    op.create_table('users',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('username', sa.String(length=64), nullable=False),
+    sa.Column('password_hash', sa.String(length=128), nullable=False),
+    sa.Column('display_name', sa.String(length=128), nullable=False),
+    sa.Column('created_at', sa.DateTime(), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),
+    sa.PrimaryKeyConstraint('id')
+    )
+    op.create_index(op.f('ix_users_username'), 'users', ['username'], unique=True)
     op.create_table('geographies',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('name', sa.String(length=128), nullable=False),
@@ -151,4 +163,6 @@ def downgrade() -> None:
     op.drop_table('geographies')
     op.drop_index(op.f('ix_advertisers_fb_url'), table_name='advertisers')
     op.drop_table('advertisers')
+    op.drop_index(op.f('ix_users_username'), table_name='users')
+    op.drop_table('users')
     # ### end Alembic commands ###

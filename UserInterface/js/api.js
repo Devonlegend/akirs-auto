@@ -67,6 +67,11 @@ async function deleteJob(jobId) {
   return request(`/jobs/${jobId}`, { method: "DELETE" });
 }
 
+// GET /health -> { status, chatbot }
+async function health() {
+  return request("/health");
+}
+
 // POST /chatbot/chat -> { answer, sources, collection, retrieved_count, elapsed_ms }
 async function sendChat(question, collection = "akirs_tax") {
   return request("/chatbot/chat", {
@@ -91,6 +96,7 @@ window.akirsApi = {
   resumeJob,
   stopJob,
   deleteJob,
+  health,
   sendChat,
   chatbotHealth,
 };

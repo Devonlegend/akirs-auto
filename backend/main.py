@@ -25,14 +25,23 @@ from backend.services.auth_queries import seed_default_admin, seed_default_users
 from api.routes import advertisers as api_advertisers
 from api.routes import geography as api_geography
 from api.routes import jobs as api_jobs
-from chatbot.api.routes import prepare_pipeline, shutdown_pipeline
-from chatbot.api.routes import router as chatbot_router
+from chatbot.config import settings as chatbot_settings
 from src.db.base import Base as JobsBase
 from src.db.base import get_engine as get_jobs_engine
 from src.db import models as _jobs_models  # noqa: F401 - register scraper tables
 
 
 logger = logging.getLogger(__name__)
+
+# The chatbot is an optional, unpluggable feature (CHATBOT_ENABLED). When it is
+# off we must not even import the RAG stack — that import pulls in the LLM /
+# embeddings / vector-store dependencies and their startup side effects. So the
+# router, widget ASGI app, and pipeline lifecycle hooks are only bound here.
+CHATBOT_ENABLED = chatbot_settings.enabled
+if CHATBOT_ENABLED:
+    from chatbot.api.routes import prepare_pipeline, shutdown_pipeline
+    from chatbot.api.routes import router as chatbot_router
+    from chatbot.asgi import app as widget_app
 
 
 @asynccontextmanager
@@ -50,21 +59,24 @@ async def lifespan(app: FastAPI):
     # Warm the LLM backend and (re)build the AKIRS knowledge base from
     # chatbot/knowledge/*.md. Wrapped so an unreachable/misconfigured LLM never
     # blocks the API from booting — the chatbot then degrades to its general
-    # conversational mode until the backend is available.
-    try:
-        await prepare_pipeline()
-    except Exception:
-        logger.exception(
-            "Chatbot startup failed — API will still boot without a warm KB."
-        )
+    # conversational mode until the backend is available. Skipped entirely when
+    # the chatbot feature is disabled.
+    if CHATBOT_ENABLED:
+        try:
+            await prepare_pipeline()
+        except Exception:
+            logger.exception(
+                "Chatbot startup failed — API will still boot without a warm KB."
+            )
 
     try:
         yield
     finally:
-        try:
-            await shutdown_pipeline()
-        except Exception:
-            logger.exception("Chatbot shutdown failed.")
+        if CHATBOT_ENABLED:
+            try:
+                await shutdown_pipeline()
+            except Exception:
+                logger.exception("Chatbot shutdown failed.")
 
 
 app = FastAPI(title="Akirs Auto Backend", lifespan=lifespan)
@@ -86,10 +98,10 @@ app.include_router(embed_keys.router)
 app.include_router(api_jobs.router)
 app.include_router(api_advertisers.router)
 app.include_router(api_geography.router)
-app.include_router(chatbot_router)
 
-from chatbot.asgi import app as widget_app
-app.mount("/widget-api", widget_app)
+if CHATBOT_ENABLED:
+    app.include_router(chatbot_router)
+    app.mount("/widget-api", widget_app)
 
 # starlette-admin panel at /admin (session-gated to Admin accounts).
 build_admin(engine).mount_to(app)
@@ -106,4 +118,4 @@ async def root_redirect():
 
 @app.get("/health")
 async def health_check():
-    return {"status": "ok"}
+    return {"status": "ok", "chatbot": CHATBOT_ENABLED}
