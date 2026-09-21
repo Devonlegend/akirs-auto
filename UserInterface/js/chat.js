@@ -258,11 +258,40 @@
     renderMessages();
   }
 
+  function removeAssistantNav() {
+    document.querySelector('[data-route="assistant"]')?.remove();
+    if (window.location.hash.startsWith("#/assistant")) {
+      window.location.hash = "#/dashboard";
+    }
+  }
+
+  // The backend exposes whether the assistant is plugged in (CHATBOT_ENABLED)
+  // via /health. Only mount the widget when it is; otherwise strip the nav entry
+  // so there is no dead UI pointing at a disabled feature.
+  async function boot() {
+    let enabled = window.akirsChatbotEnabled;
+    if (enabled === undefined) {
+      try {
+        const status = await window.akirsApi?.health?.();
+        enabled = status ? status.chatbot !== false : true;
+      } catch (_) {
+        // Backend unreachable — assume enabled so the widget can report the error.
+        enabled = true;
+      }
+    }
+    window.akirsChatbotEnabled = enabled;
+    if (!enabled) {
+      removeAssistantNav();
+      return;
+    }
+    mount();
+  }
+
   window.akirsChat = { mount, open, close, toggle };
 
   if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", mount);
+    document.addEventListener("DOMContentLoaded", boot);
   } else {
-    mount();
+    boot();
   }
 })();

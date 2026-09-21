@@ -21,6 +21,14 @@ class ChatbotSettings(BaseSettings):
         extra="ignore",
     )
 
+    # -- Feature toggle -----------------------------------------------------
+    enabled: bool = Field(
+        default=True,
+        description="Master switch for the chatbot. When false, the backend "
+        "never imports the RAG stack, warms the LLM, ingests the knowledge "
+        "base, or mounts any chatbot route/widget.",
+    )
+
     # -- LLM / Ollama -------------------------------------------------------
     ollama_model: str = Field(
         default="phi4-mini",

@@ -1274,6 +1274,22 @@ function chartPanel(title, rows) {
 }
 
 function renderAssistant() {
+  if (window.akirsChatbotEnabled === false) {
+    return `
+      <section class="page">
+        ${pageHeader("AKIRS Assistant", "The AI assistant is not enabled on this deployment.")}
+        <div class="dashboard-grid">
+          <section class="panel span-8">
+            <div class="panel__header"><h2>${icon("forum")} Assistant unavailable</h2></div>
+            <p class="muted">
+              The AKIRS Assistant feature is turned off for this environment.
+              Contact an administrator if you expected it to be available.
+            </p>
+          </section>
+        </div>
+      </section>
+    `;
+  }
   return `
     <section class="page">
       ${pageHeader(
