@@ -16,14 +16,16 @@ Three services, one public entrypoint:
 | Service | Image / build | Role | Public? |
 |---|---|---|---|
 | `api` | `Dockerfile` in this repo | FastAPI app — UI, REST API, chatbot routes, embed-key auth, Celery producer | **Yes** (port 8000) |
-| `llamacpp` | `ghcr.io/ggml-org/llama.cpp:server` | CPU inference server (OpenAI-compatible API) serving the GGUF model | No — internal only |
+| `llamacpp` | `Dockerfile.llamacpp` in this repo | CPU inference server (OpenAI-compatible API) with the GGUF baked in | No — internal only |
 | `worker` | `Dockerfile` in this repo | Celery worker — scrape + recon jobs, drives Playwright/Chromium | No |
 | `redis` | `redis:7-alpine` | Celery broker + result store | No |
 
-Two named volumes:
+One named volume:
 
 - `akirs-data` → `/data` — SQLite DB, CSV output, ChromaDB vector store, KB ingest hash marker.
-- `akirs-models` → `/models` (read-only on `llamacpp`) — the GGUF model file.
+
+The GGUF model is **baked into the `llamacpp` image** at build time — no
+volume, no manual upload step. See "Get the model" below.
 
 ---
 
@@ -38,18 +40,25 @@ Two named volumes:
 
 ## 1. Get the model
 
-Download the quantized Gemma 3 1B instruction-tuned GGUF (Q4_K_M, ~800 MB):
+Download the quantized Gemma 3 1B instruction-tuned GGUF (Q4_K_M, ~800 MB) into
+the `models/` directory at the repo root:
 
 ```bash
-# Any of the community quants work. Example using huggingface_hub:
+# Using huggingface_hub (recommended)
+pip install huggingface-hub
 huggingface-cli download bartowski/gemma-3-1b-it-GGUF \
     gemma-3-1b-it-Q4_K_M.gguf \
     --local-dir ./models
 ```
 
-You should end up with a local file `./models/gemma-3-1b-it-Q4_K_M.gguf`
-(~700-900 MB). The filename **must match** the path in `docker-compose.yml`'s
-`llamacpp.command` — change one or the other if you pick a different quant.
+You should end up with `models/gemma-3-1b-it-Q4_K_M.gguf`. The filename **must
+match** the `COPY` and `CMD` in `Dockerfile.llamacpp` — change one or the other
+if you pick a different quant or model.
+
+The GGUF is **not committed to git** (~800 MB). Coolify will fail to build the
+`llamacpp` service if the file isn't present in your local clone when you push
+/ trigger a deploy. Make sure `models/gemma-3-1b-it-Q4_K_M.gguf` exists before
+deploying.
 
 ---
 
@@ -57,7 +66,7 @@ You should end up with a local file `./models/gemma-3-1b-it-Q4_K_M.gguf`
 
 1. In Coolify: **Projects → Add → Deploy a Git repository**.
 2. Point it at this repo. Coolify auto-detects `docker-compose.yml`.
-3. Coolify will create the three build/run services plus the named volumes.
+3. Coolify will create the three build/run services plus the named volume.
 
 ### Environment variables (Coolify UI → service → Environment Variables)
 
@@ -78,29 +87,17 @@ deployed container. The compose file's `environment:` block is just defaults.
 
 ---
 
-## 3. Upload the model into the `akirs-models` volume
-
-The GGUF file is **not** in git (too big). Upload it once per deployment:
-
-1. Coolify → your service → `llamacpp` → **Storages**.
-2. Find the `akirs-models` volume mounted at `/models`.
-3. **Upload file** → pick your local `gemma-3-1b-it-Q4_K_M.gguf`.
-4. Verify it lands at `/models/gemma-3-1b-it-Q4_K_M.gguf` inside the volume.
-
-If you ever swap models (e.g. try a Qwen or Phi), upload the new file, edit
-`llamacpp.command`'s `-m` path, redeploy.
-
----
-
-## 4. First deploy
+## 3. First deploy
 
 Click **Deploy**. Coolify will:
 
 1. Build the `api` and `worker` images from `Dockerfile` (~3-5 min —
    Playwright + Chromium are the slow part).
-2. Pull `redis:7-alpine` and `ghcr.io/ggml-org/llama.cpp:server`.
-3. Start `redis` → `llamacpp` → `api` → `worker` (in dependency order).
-4. Run the `api` healthcheck (`curl http://localhost:8000/health`) to gate
+2. Build the `llamacpp` image from `Dockerfile.llamacpp`, which COPYs the GGUF
+   into the image (~1 min for the copy on top of pulling the llama.cpp base).
+3. Pull `redis:7-alpine`.
+4. Start `redis` → `llamacpp` → `api` → `worker` (in dependency order).
+5. Run the `api` healthcheck (`curl http://localhost:8000/health`) to gate
    the rollout.
 
 The first API boot is slow because it also:
@@ -114,7 +111,7 @@ restarts with unchanged knowledge files skip the wipe+re-embed (~40 s saved).
 
 ---
 
-## 5. Verify
+## 4. Verify
 
 Once the deploy goes green:
 
@@ -138,7 +135,7 @@ token in ~1-3 s.
 
 ---
 
-## 6. Embed the widget on an external site
+## 5. Embed the widget on an external site
 
 The chatbot is exposed to the public **only** through the key-gated
 `/widget-api/*` mount (the `/chatbot/*` router is currently also mounted —
@@ -163,7 +160,7 @@ The widget renders a bottom-right chat bubble and streams answers from
 
 ---
 
-## 7. Day-2 operations
+## 6. Day-2 operations
 
 ### Updating the knowledge base
 
@@ -200,11 +197,11 @@ serialises generation requests. To serve more concurrent chats:
 
 ### Upgrading the model
 
-1. Download the new GGUF.
-2. Upload to `akirs-models` volume at `/models/<new-file>.gguf`.
-3. Update `llamacpp.command`'s `-m /models/<new-file>.gguf` and
-   `CHATBOT_LLAMACPP_MODEL` in the compose file.
-4. Redeploy. The KB hash is independent of the model — no re-ingest needed.
+1. Download the new GGUF into `models/`.
+2. Update `Dockerfile.llamacpp`'s `COPY` and `CMD` to reference the new filename.
+3. Update `CHATBOT_LLAMACPP_MODEL` in `docker-compose.yml` to match.
+4. Push → Coolify rebuilds the `llamacpp` image with the new model inside.
+   The KB hash is independent of the model — no re-ingest needed.
 
 ---
 
@@ -233,8 +230,9 @@ These are tracked in `PRODUCTION_PLAN.md` §7:
 If a deploy goes bad:
 
 1. Coolify → service → **Deployments** → redeploy a previous Git SHA.
-2. The `akirs-data` volume is preserved across redeploys — your SQLite DB,
-   vector store, and uploaded model survive.
+2. The `akirs-data` volume is preserved across redeploys — your SQLite DB and
+   vector store survive. The model is in the image, so reverting the SHA also
+   reverts the model.
 3. If you need to wipe the KB and start fresh: stop `api`, delete
    `/data/chatbot_data/vector_db/` inside the volume, start `api`. The next
    boot re-ingests from the markdown files.

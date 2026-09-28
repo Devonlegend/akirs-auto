@@ -35,11 +35,11 @@ RUN pip install --no-cache-dir uv && \
 RUN playwright install chromium
 
 # App source. `src/` is a pythonpath root; `backend/` and `chatbot/` are
-# top-level packages imported by `backend.main:app`.
+# top-level packages imported by `backend.main:app`. `UserInterface/` is the
+# static UI mounted at /ui.
 COPY src/ ./src/
 COPY backend/ ./backend/
 COPY chatbot/ ./chatbot/
-COPY pages/ ./pages/
 COPY UserInterface/ ./UserInterface/
 COPY main.py ./
 

@@ -53,24 +53,14 @@ services:
     # CMD from Dockerfile: uvicorn backend.main:app --host 0.0.0.0 --port 8000
 
   # CPU-only LLM serving via llama.cpp (OpenAI-compatible API used by the
-  # chatbot). The GGUF model is NOT in git — upload it once into the
-  # `akirs-models` volume at /models/gemma-3-1b-it-Q4_K_M.gguf
-  # (Coolify → this service → Storages → upload file).
+  # chatbot). The GGUF model is baked into the image at build time — place
+  # models/gemma-3-1b-it-Q4_K_M.gguf in the repo root before building (see
+  # Dockerfile.llamacpp). No volume mount needed.
   llamacpp:
-    image: ghcr.io/ggml-org/llama.cpp:server
-    volumes:
-      - akirs-models:/models:ro
+    build:
+      context: .
+      dockerfile: Dockerfile.llamacpp
     # No host port published — only the `api` service talks to it.
-    command: >
-      -m /models/gemma-3-1b-it-Q4_K_M.gguf
-      --host 0.0.0.0 --port 8080
-      -c 2048
-      -t 4
-      -ngl 0
-      --parallel 1
-      --jinja
-      --cache-type-k q8_0
-      --cache-type-v q8_0
     restart: unless-stopped
 
   worker:
@@ -101,4 +91,3 @@ services:
 
 volumes:
   akirs-data:
-  akirs-models:
