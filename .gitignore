@@ -39,6 +39,9 @@ agent*.md
 # Chatbot vector store (ChromaDB persistent storage)
 chatbot_data/
 
+# LLM model files (downloaded at container start, not committed)
+models/*.gguf
+
 debug.py
 fix*.py
 scratch.py

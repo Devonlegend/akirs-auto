@@ -20,12 +20,14 @@ Three services, one public entrypoint:
 | `worker` | `Dockerfile` in this repo | Celery worker — scrape + recon jobs, drives Playwright/Chromium | No |
 | `redis` | `redis:7-alpine` | Celery broker + result store | No |
 
-One named volume:
+Two named volumes:
 
 - `akirs-data` → `/data` — SQLite DB, CSV output, ChromaDB vector store, KB ingest hash marker.
+- `akirs-models` → `/models` (on `llamacpp`) — caches the downloaded GGUF so restarts don't re-download.
 
-The GGUF model is **baked into the `llamacpp` image** at build time — no
-volume, no manual upload step. See "Get the model" below.
+The GGUF model is **downloaded at container start** (not committed to git, not
+baked into the image). First boot of the `llamacpp` service takes ~1-2 min while
+it pulls the model; subsequent restarts reuse the cached file.
 
 ---
 
@@ -38,27 +40,26 @@ volume, no manual upload step. See "Get the model" below.
 
 ---
 
-## 1. Get the model
+## 1. Model
 
-Download the quantized Gemma 3 1B instruction-tuned GGUF (Q4_K_M, ~800 MB) into
-the `models/` directory at the repo root:
+No manual download needed. The `llamacpp` service downloads the GGUF
+automatically at container start into the `akirs-models` volume. The download
+URL and filename are set in `docker-compose.yml`:
 
-```bash
-# Using huggingface_hub (recommended)
-pip install huggingface-hub
-huggingface-cli download bartowski/gemma-3-1b-it-GGUF \
-    gemma-3-1b-it-Q4_K_M.gguf \
-    --local-dir ./models
+```yaml
+llamacpp:
+  environment:
+    MODEL_URL: "https://huggingface.co/bartowski/gemma-3-1b-it-GGUF/resolve/main/gemma-3-1b-it-Q4_K_M.gguf"
+    MODEL_FILE: "gemma-3-1b-it-Q4_K_M.gguf"
 ```
 
-You should end up with `models/gemma-3-1b-it-Q4_K_M.gguf`. The filename **must
-match** the `COPY` and `CMD` in `Dockerfile.llamacpp` — change one or the other
-if you pick a different quant or model.
+The GGUF is **not committed to git** (`models/*.gguf` is gitignored) and **not
+baked into the image** — the image stays small (~800 MB base), and the model
+downloads once per environment on first boot.
 
-The GGUF is **not committed to git** (~800 MB). Coolify will fail to build the
-`llamacpp` service if the file isn't present in your local clone when you push
-/ trigger a deploy. Make sure `models/gemma-3-1b-it-Q4_K_M.gguf` exists before
-deploying.
+To switch models: update `MODEL_URL`, `MODEL_FILE`, the `-m` path in
+`Dockerfile.llamacpp`'s `CMD`, and `CHATBOT_LLAMACPP_MODEL`, then set
+`FORCE_REDOWNLOAD=1` on the llamacpp service and redeploy.
 
 ---
 
@@ -93,10 +94,12 @@ Click **Deploy**. Coolify will:
 
 1. Build the `api` and `worker` images from `Dockerfile` (~3-5 min —
    Playwright + Chromium are the slow part).
-2. Build the `llamacpp` image from `Dockerfile.llamacpp`, which COPYs the GGUF
-   into the image (~1 min for the copy on top of pulling the llama.cpp base).
+2. Build the `llamacpp` image from `Dockerfile.llamacpp` (just the base image
+   + entrypoint script, ~30 s).
 3. Pull `redis:7-alpine`.
 4. Start `redis` → `llamacpp` → `api` → `worker` (in dependency order).
+   On first boot, `llamacpp` downloads the GGUF (~800 MB, 1-2 min depending on
+   network) into the `akirs-models` volume.
 5. Run the `api` healthcheck (`curl http://localhost:8000/health`) to gate
    the rollout.
 
@@ -197,10 +200,11 @@ serialises generation requests. To serve more concurrent chats:
 
 ### Upgrading the model
 
-1. Download the new GGUF into `models/`.
-2. Update `Dockerfile.llamacpp`'s `COPY` and `CMD` to reference the new filename.
+1. Update `MODEL_URL` and `MODEL_FILE` in `docker-compose.yml`.
+2. Update the `-m /models/<file>` path in `Dockerfile.llamacpp`'s `CMD`.
 3. Update `CHATBOT_LLAMACPP_MODEL` in `docker-compose.yml` to match.
-4. Push → Coolify rebuilds the `llamacpp` image with the new model inside.
+4. Set `FORCE_REDOWNLOAD=1` on the llamacpp service, redeploy, then unset it
+   (or wipe the `akirs-models` volume).
    The KB hash is independent of the model — no re-ingest needed.
 
 ---
@@ -230,9 +234,8 @@ These are tracked in `PRODUCTION_PLAN.md` §7:
 If a deploy goes bad:
 
 1. Coolify → service → **Deployments** → redeploy a previous Git SHA.
-2. The `akirs-data` volume is preserved across redeploys — your SQLite DB and
-   vector store survive. The model is in the image, so reverting the SHA also
-   reverts the model.
+2. Both volumes (`akirs-data`, `akirs-models`) are preserved across redeploys —
+   your SQLite DB, vector store, and downloaded model survive.
 3. If you need to wipe the KB and start fresh: stop `api`, delete
    `/data/chatbot_data/vector_db/` inside the volume, start `api`. The next
    boot re-ingests from the markdown files.

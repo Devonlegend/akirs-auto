@@ -1,28 +1,15 @@
-# llama.cpp CPU inference server with the Gemma 3 1B GGUF baked in.
-#
-# Building the model into the image makes deploys fully reproducible — no
-# manual GGUF upload step into a volume. The trade-off is a bigger image
-# (~1.6 GB total: ~800 MB base + ~800 MB GGUF), but runtime performance is
-# identical to reading from a mounted volume.
-#
-# The GGUF file itself is NOT in git (too large). Place it at
-# models/gemma-3-1b-it-Q4_K_M.gguf before building:
-#
-#   huggingface-cli download bartowski/gemma-3-1b-it-GGUF \
-#       gemma-3-1b-it-Q4_K_M.gguf --local-dir ./models
-#
-# Then `docker compose build llamacpp` (or let Coolify build it).
+# llama.cpp CPU inference server with an entrypoint that downloads the GGUF
+# model at container start (not baked into the image, not committed to git).
+# The download is cached in a named volume so restarts don't re-download.
 
 FROM ghcr.io/ggml-org/llama.cpp:server
 
-# Model file. models/ is intentionally NOT in .dockerignore so this COPY works.
-# The build fails fast here if you haven't placed the GGUF — better than
-# silently shipping an image with no model.
-COPY models/gemma-3-1b-it-Q4_K_M.gguf /models/gemma-3-1b-it-Q4_K_M.gguf
+COPY docker/llamacpp-entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
 
-# Default command matches docker-compose.yml's llamacpp.command. Kept here so
-# the image is runnable standalone (docker run -p 8080:8080 ...) without any
-# flags. Compose can still override `command:` if needed.
+ENTRYPOINT ["/entrypoint.sh"]
+
+# Default flags — docker-compose.yml can override via `command:`.
 CMD ["-m", "/models/gemma-3-1b-it-Q4_K_M.gguf", \
      "--host", "0.0.0.0", "--port", "8080", \
      "-c", "2048", \
