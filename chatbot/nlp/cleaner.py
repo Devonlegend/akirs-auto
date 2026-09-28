@@ -11,7 +11,12 @@ _HORIZONTAL_WS = re.compile(r"[^\S\n]+")  # spaces/tabs, but not newlines
 _MULTI_BLANK_LINE = re.compile(r"\n[ \t]*\n[ \t\n]*")  # paragraph breaks
 _CONTROL_CHARS = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]")
 # Zero-width and other invisible characters that add noise.
-_INVISIBLE_CHARS = re.compile(r"[​‌‍‎‏  ﻿]")
+# Explicit escapes: zero-width chars + LINE/PARAGRAPH SEPARATOR + BOM. Do NOT
+# include a plain space here — that would strip every word boundary.
+_INVISIBLE_CHARS = re.compile(r"[\u200b\u200c\u200d\u200e\u200f\u2028\u2029\ufeff]")
+# A markdown ATX heading line ("## Overview") or a horizontal rule ("---").
+_HEADING_LINE = re.compile(r"^\s*#{1,6}\s+.*$")
+_RULE_LINE = re.compile(r"^\s*([-*_])\1{2,}\s*$")
 
 
 def clean_text(text: str, *, strip_control_chars: bool = True) -> str:
@@ -108,6 +113,32 @@ def extract_sentences(text: str) -> list[str]:
         result.extend(s.strip() for s in sent.split("\n") if s.strip())
 
     return result
+
+
+def is_heading_only(text: str, *, min_prose_chars: int = 15) -> bool:
+    """True if *text* carries no substantive prose — only headings / rules.
+
+    Markdown headings that sit alone between blank lines become their own
+    chunks. Their text embeds close to the page topic, so they rank well and
+    eat context slots, yet they contain no answer. Feeding them to a small LLM
+    alongside the real content is what makes it abstain ("I don't have that
+    information...") even when the answer is present. Such chunks are dropped
+    at ingest and again when assembling the retrieval context.
+
+    Args:
+        text: The cleaned chunk text.
+        min_prose_chars: Minimum non-heading characters for a chunk to count as
+            content. Anything shorter is treated as a heading / separator stub.
+
+    Returns:
+        ``True`` if the chunk has no substantive prose.
+    """
+    prose_lines = [
+        line
+        for line in (text or "").splitlines()
+        if not _HEADING_LINE.match(line) and not _RULE_LINE.match(line)
+    ]
+    return len("".join(prose_lines).strip()) < min_prose_chars
 
 
 def is_noise(text: str, *, min_length: int = 10, min_alpha_ratio: float = 0.3) -> bool:

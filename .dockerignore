@@ -1,0 +1,46 @@
+# --- Python / build ---
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info/
+.pytest_cache/
+
+# --- Virtual env / secrets ---
+.venv/
+.env
+
+# --- VCS / IDE ---
+.git/
+.vscode/
+.idea/
+
+# --- Local data / outputs (mounted as volumes instead) ---
+output/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.csv
+logs/
+.akirs-browser/
+.auth/
+chatbot_data/
+data/
+*.rdb
+
+# --- Playwright / node leftovers ---
+.playwright/
+.playwright-cli/
+node_modules/
+
+# --- Misc ---
+.claude/
+test*.py
+debug.py
+fix*.py
+scratch.py
+Dockerfile
+docker-compose.yml
+.dockerignore

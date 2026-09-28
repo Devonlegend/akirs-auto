@@ -8,7 +8,7 @@ import uuid
 
 from chatbot.embeddings.embedder import Embedder
 from chatbot.nlp.chunker import TextChunker
-from chatbot.nlp.cleaner import clean_text, is_noise
+from chatbot.nlp.cleaner import clean_text, is_heading_only, is_noise
 from chatbot.vector_store.base import VectorStore
 from chatbot.vector_store.chroma_store import ChromaVectorStore
 
@@ -90,7 +90,13 @@ class Ingestor:
         # 2. Chunk.
         chunks = self._chunker.chunk(cleaned)
         if skip_noise:
-            chunks = [c for c in chunks if not is_noise(c.text)]
+            # Drop noise *and* heading-only stubs (page titles, "## Section"
+            # lines) — they match queries well but answer nothing.
+            chunks = [
+                c
+                for c in chunks
+                if not is_noise(c.text) and not is_heading_only(c.text)
+            ]
 
         if not chunks:
             return {

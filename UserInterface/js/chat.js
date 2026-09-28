@@ -9,6 +9,18 @@
   let isOpen = false;
   let sending = false;
 
+  // Resolve the backend base without depending on api.js (which may load later
+  // or fail). An empty string means same-origin, which is correct when the UI
+  // is served from /ui by the backend itself.
+  function apiBase() {
+    if (window.akirsApi && typeof window.akirsApi.API_BASE === "string") {
+      return window.akirsApi.API_BASE;
+    }
+    if (window.AKIRS_API_BASE) return window.AKIRS_API_BASE;
+    if (window.location.pathname.startsWith("/ui")) return "";
+    return "http://127.0.0.1:8000";
+  }
+
   function escapeHtml(value) {
     return String(value ?? "").replace(/[&<>"']/g, (c) => ({
       "&": "&amp;",
@@ -79,24 +91,19 @@
     list.scrollTop = list.scrollHeight;
   }
 
-  async function send() {
+  async function send(preset) {
     const input = root().querySelector(".chat-input");
-    if (!input || sending) return;
-    const question = input.value.trim();
+    if (sending) return;
+    const question = (typeof preset === "string" ? preset : input ? input.value : "").trim();
     if (!question) return;
 
-    if (!window.akirsApi?.API_BASE) {
-      messages.push({
-        role: "assistant",
-        text: "The assistant isn't available right now. Please reload the page once the backend is running.",
-      });
-      renderMessages();
-      return;
-    }
+    const base = apiBase();
 
     sending = true;
-    input.value = "";
-    input.style.height = "auto";
+    if (input) {
+      input.value = "";
+      input.style.height = "auto";
+    }
     messages.push({ role: "user", text: question });
     const placeholder = { role: "assistant", text: "", pending: true, streaming: true };
     messages.push(placeholder);
@@ -105,7 +112,7 @@
 
     try {
       // Stream the answer token-by-token (newline-delimited JSON per frame).
-      const resp = await fetch(`${window.akirsApi.API_BASE}/chatbot/chat/stream`, {
+      const resp = await fetch(`${base}/chatbot/chat/stream`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ question, collection: KB_COLLECTION }),
@@ -199,6 +206,15 @@
     else open();
   }
 
+  // Open the panel (mounting it first if needed) and immediately ask *question*.
+  // Used by the in-app "Try asking" shortcuts on the assistant page.
+  function ask(question) {
+    if (question === undefined || question === null) return;
+    mount();
+    open();
+    send(String(question));
+  }
+
   function mount() {
     if (mounted) return;
     const el = root();
@@ -272,7 +288,8 @@
     let enabled = window.akirsChatbotEnabled;
     if (enabled === undefined) {
       try {
-        const status = await window.akirsApi?.health?.();
+        const res = await fetch(`${apiBase()}/health`);
+        const status = res.ok ? await res.json() : null;
         enabled = status ? status.chatbot !== false : true;
       } catch (_) {
         // Backend unreachable — assume enabled so the widget can report the error.
@@ -287,7 +304,7 @@
     mount();
   }
 
-  window.akirsChat = { mount, open, close, toggle };
+  window.akirsChat = { mount, open, close, toggle, ask };
 
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", boot);

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Literal
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -27,6 +28,14 @@ class ChatbotSettings(BaseSettings):
         description="Master switch for the chatbot. When false, the backend "
         "never imports the RAG stack, warms the LLM, ingests the knowledge "
         "base, or mounts any chatbot route/widget.",
+    )
+
+    # -- LLM backend selection ---------------------------------------------
+    llm_backend: Literal["ollama", "llamacpp"] = Field(
+        default="ollama",
+        description="Which LLM backend serves generation. 'ollama' for local "
+        "dev, 'llamacpp' for production CPU serving via llama.cpp "
+        "llama-server (OpenAI-compatible API).",
     )
 
     # -- LLM / Ollama -------------------------------------------------------
@@ -65,6 +74,22 @@ class ChatbotSettings(BaseSettings):
         ge=512,
         le=32768,
         description="Context window (tokens) given to Ollama per request.",
+    )
+
+    # -- LLM / llama.cpp ------------------------------------------------------
+    llamacpp_base_url: str = Field(
+        default="http://localhost:8080",
+        description="llama.cpp llama-server HTTP base URL (OpenAI-compatible).",
+    )
+    llamacpp_model: str = Field(
+        default="gemma-3-1b",
+        description="Model label reported by the llama.cpp backend in logs and "
+        "health checks (llama.cpp serves a single preloaded model).",
+    )
+    llamacpp_api_key: str = Field(
+        default="",
+        description="Optional Bearer token sent to llama-server when it is run "
+        "with --api-key. Empty means no Authorization header is sent.",
     )
 
     # -- Embeddings ---------------------------------------------------------

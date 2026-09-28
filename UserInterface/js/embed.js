@@ -8,6 +8,10 @@
   }
   
   const baseUrl = currentScript.getAttribute('data-base-url') || "http://localhost:8000/widget-api";
+  // Knowledge-base collection to query. Must match CHATBOT_KNOWLEDGE_COLLECTION
+  // (the backend ingests chatbot/knowledge/*.md into "akirs_tax" at startup),
+  // otherwise every answer falls through to the scoped "not found" reply.
+  const collection = currentScript.getAttribute('data-collection') || "akirs_tax";
   
   // Inject scoped styles
   const style = document.createElement("style");
@@ -265,7 +269,7 @@
         },
         body: JSON.stringify({
           question: text,
-          collection: "akirs_kb",
+          collection: collection,
           top_k: 5,
           temperature: 0.1
         })

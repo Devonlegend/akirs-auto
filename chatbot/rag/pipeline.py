@@ -7,9 +7,11 @@ import time
 
 from chatbot.config import settings
 from chatbot.llm.base import LLMBackend, LLMResponse
-from chatbot.llm.ollama_backend import OllamaBackend
-from chatbot.rag.prompt_builder import GENERAL_SYSTEM_PROMPT, build_prompt
-from chatbot.retrieval.retriever import Retriever, format_context, is_greeting
+from chatbot.llm.factory import build_llm_backend
+from chatbot.nlp.cleaner import is_heading_only
+from chatbot.rag.guardrails import SCOPE_REPLY, canned_reply
+from chatbot.rag.prompt_builder import build_prompt
+from chatbot.retrieval.retriever import Retriever, format_context
 from chatbot.vector_store.base import StoredChunk
 
 logger = logging.getLogger(__name__)
@@ -42,7 +44,7 @@ class RAGPipeline:
         llm: LLMBackend | None = None,
     ) -> None:
         self._retriever = retriever or Retriever()
-        self._llm = llm or OllamaBackend()
+        self._llm = llm or build_llm_backend()
 
     # ------------------------------------------------------------------
     # Public API
@@ -78,17 +80,12 @@ class RAGPipeline:
         """
         t0 = time.monotonic()
 
-        # Greeting / small talk: skip retrieval+embedding entirely and answer
-        # conversationally with the general prompt (no sources).
-        if is_greeting(question):
-            response = await self._llm.generate(
-                system_prompt=GENERAL_SYSTEM_PROMPT,
-                context="",
-                question=question,
-                temperature=temperature,
-            )
+        # 0. Scope/safety guard: harmful, greeting, or thanks inputs get an
+        # instant canned reply — no retrieval and no LLM call.
+        canned = canned_reply(question)
+        if canned is not None:
             return {
-                "answer": response.content,
+                "answer": canned,
                 "sources": [],
                 "collection": collection,
                 "elapsed_ms": (time.monotonic() - t0) * 1000,
@@ -140,9 +137,9 @@ class RAGPipeline:
             where=where,
         )
 
-        # 1b. Drop low-relevance matches so off-topic queries (greetings, small
-        # talk) don't get answered against junk context.
-        relevant = [c for c in chunks if c.score >= settings.relevance_threshold]
+        # 1b. Drop low-relevance matches and heading-only stubs so off-topic or
+        # noisy chunks don't dilute the context the model sees.
+        relevant = _relevant_chunks(chunks, settings.relevance_threshold)
         if len(relevant) != len(chunks):
             logger.debug(
                 "Filtered %d/%d chunks below relevance threshold %.2f.",
@@ -152,16 +149,12 @@ class RAGPipeline:
             )
 
         if not relevant:
-            # No relevant documents — fall back to a general conversational
-            # answer (greetings, small talk, simple questions) instead of refusing.
-            response = await self._llm.generate(
-                system_prompt=GENERAL_SYSTEM_PROMPT,
-                context="",
-                question=question,
-                temperature=temperature,
-            )
+            # Nothing in the knowledge base matches. Stay in scope and reply
+            # instantly with a canned redirect instead of a slow, ungrounded
+            # free-form LLM answer (which is also how unsafe prompts used to
+            # reach the model).
             return {
-                "answer": response.content,
+                "answer": SCOPE_REPLY,
                 "sources": [],
                 "collection": collection,
                 "elapsed_ms": (time.monotonic() - t0) * 1000,
@@ -223,23 +216,35 @@ class RAGPipeline:
         - ``{"type": "delta", ...}``   (one token fragment)
         - ``{"type": "end", ...}``     (elapsed_ms, retrieved_count)
 
-        NOT cached (one-shot streaming) and preserves the greeting fast-path.
+        Shares the response cache with :meth:`ask`, so a repeated question is
+        replayed from memory instead of re-running retrieval + generation.
         """
         t0 = time.monotonic()
         yield {"type": "start", "collection": collection}
 
-        # Greeting fast-path: no retrieval/sources — just stream a general reply.
-        if is_greeting(question):
-            async for delta, _final in self._llm.generate_stream(
-                system_prompt=GENERAL_SYSTEM_PROMPT,
-                context="",
-                question=question,
-                temperature=temperature,
-            ):
-                if delta:
-                    yield {"type": "delta", "text": delta}
+        # Scope/safety guard: harmful/greeting/thanks inputs get an instant
+        # canned reply — no retrieval, no LLM.
+        canned = canned_reply(question)
+        if canned is not None:
+            yield {"type": "delta", "text": canned}
             yield {"type": "end", "elapsed_ms": (time.monotonic() - t0) * 1000,
                    "retrieved_count": 0}
+            return
+
+        # Cache replay: identical question answered recently → stream it back
+        # without re-embedding, re-retrieving, or re-generating.
+        key = _cache_key(collection, question, top_k)
+        now = time.monotonic()
+        hit = _CACHE.get(key)
+        if hit and now - hit[0] < _CACHE_TTL:
+            cached = hit[1]
+            if cached.get("sources"):
+                yield {"type": "sources", "sources": cached["sources"]}
+            for piece in _chunk_text(cached.get("answer", "")):
+                yield {"type": "delta", "text": piece}
+            yield {"type": "end", "elapsed_ms": (now - hit[0]) * 1000,
+                   "retrieved_count": cached.get("retrieved_count", 0),
+                   "cached": True}
             return
 
         chunks = await self._retriever.retrieve(
@@ -248,17 +253,12 @@ class RAGPipeline:
             top_k=top_k,
             where=where,
         )
-        relevant = [c for c in chunks if c.score >= settings.relevance_threshold]
+        relevant = _relevant_chunks(chunks, settings.relevance_threshold)
 
         if not relevant:
-            async for delta, _final in self._llm.generate_stream(
-                system_prompt=GENERAL_SYSTEM_PROMPT,
-                context="",
-                question=question,
-                temperature=temperature,
-            ):
-                if delta:
-                    yield {"type": "delta", "text": delta}
+            # Off-topic / not in the knowledge base: canned scoped redirect
+            # instead of an ungrounded free-form generation.
+            yield {"type": "delta", "text": SCOPE_REPLY}
             yield {"type": "end", "elapsed_ms": (time.monotonic() - t0) * 1000,
                    "retrieved_count": 0}
             return
@@ -269,11 +269,13 @@ class RAGPipeline:
             context=context,
             system_prompt=system_prompt,
         )
+        sources = _build_sources(relevant)
 
         # Emit sources immediately so the frontend can render citations while the
         # model is still generating.
-        yield {"type": "sources", "sources": _build_sources(relevant)}
+        yield {"type": "sources", "sources": sources}
 
+        answer_parts: list[str] = []
         async for delta, _final in self._llm.generate_stream(
             system_prompt=sys_prompt,
             context=user_context,
@@ -281,10 +283,22 @@ class RAGPipeline:
             temperature=temperature,
         ):
             if delta:
+                answer_parts.append(delta)
                 yield {"type": "delta", "text": delta}
 
+        elapsed_ms = (time.monotonic() - t0) * 1000
+        if len(_CACHE) >= _CACHE_MAX:
+            _CACHE.clear()
+        _CACHE[key] = (time.monotonic(), {
+            "answer": "".join(answer_parts),
+            "sources": sources,
+            "collection": collection,
+            "elapsed_ms": elapsed_ms,
+            "retrieved_count": len(relevant),
+        })
+
         yield {"type": "end",
-               "elapsed_ms": (time.monotonic() - t0) * 1000,
+               "elapsed_ms": elapsed_ms,
                "retrieved_count": len(relevant)}
 
     async def prepare(self) -> None:
@@ -312,7 +326,7 @@ class RAGPipeline:
         collections = await store.list_collections()
         return {
             "llm_ok": llm_ok,
-            "model": settings.ollama_model,
+            "model": getattr(self._llm, "_model", "unknown"),
             "collections": collections,
             "collection_counts": {
                 c: await store.collection_count(c)
@@ -341,6 +355,29 @@ class RAGPipeline:
 def _cache_key(collection: str, question: str, top_k: int | None) -> tuple:
     """Stable cache key for the pipeline query cache."""
     return (collection, " ".join(question.lower().split()), top_k or settings.top_k)
+
+
+def _relevant_chunks(
+    chunks: list[StoredChunk], threshold: float
+) -> list[StoredChunk]:
+    """Keep chunks above *threshold* that carry actual prose.
+
+    Heading-only chunks (a lone "## Overview" or "# Page Title") rank highly
+    because their text matches the topic, but they answer nothing and make
+    small models abstain, so they are dropped from the context.
+    """
+    return [
+        c
+        for c in chunks
+        if c.score >= threshold and not is_heading_only(c.text)
+    ]
+
+
+def _chunk_text(text: str, size: int = 40) -> list[str]:
+    """Split a cached answer into small pieces so replay still feels streamed."""
+    if not text:
+        return []
+    return [text[i : i + size] for i in range(0, len(text), size)]
 
 
 def _build_sources(chunks: list[StoredChunk]) -> list[dict]:

@@ -91,6 +91,22 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+@app.middleware("http")
+async def _no_cache_ui(request, call_next):
+    """Force browsers to revalidate UI assets so shipped JS/CSS isn't stale.
+
+    StaticFiles sets ETag/Last-Modified but no Cache-Control, which lets
+    browsers apply heuristic caching. That caused an updated widget to keep
+    running old code until a hard refresh.
+    """
+    response = await call_next(request)
+    if request.url.path.startswith("/ui"):
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+    return response
+
 app.include_router(scraped.router)
 app.include_router(taxation.router)
 app.include_router(auth.router)

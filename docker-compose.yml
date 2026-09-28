@@ -1,9 +1,10 @@
+# Deployed via Coolify.
+
+
 services:
   redis:
     image: redis:7-alpine
-    container_name: akirs-redis
-    ports:
-      - "6379:6379"
+    # No host port published — only reachable inside the compose network.
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -12,39 +13,92 @@ services:
     restart: unless-stopped
 
   api:
-    profiles: ["full"]
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: akirs-api
     depends_on:
       redis:
         condition: service_healthy
+      llamacpp:
+        condition: service_started
     environment:
       DATABASE_URL: sqlite+aiosqlite:////data/akirs.db
       DATABASE_URL_SYNC: sqlite:////data/akirs.db
       REDIS_URL: redis://redis:6379/0
       FB_ADS_HEADLESS: "true"
+      RECON_BROWSER_HEADLESS: "true"
+      OUTPUT_DIR: /data/output
+      # REQUIRED in Coolify env: long random string.
+      ADMIN_SESSION_SECRET: ${ADMIN_SESSION_SECRET:-dev-insecure-change-me}
+      # Chatbot (llama.cpp backend served by the `llamacpp` service below).
+      CHATBOT_ENABLED: "true"
+      CHATBOT_LLM_BACKEND: llamacpp
+      CHATBOT_LLAMACPP_BASE_URL: http://llamacpp:8080
+      CHATBOT_LLAMACPP_MODEL: gemma-3-1b
+      CHATBOT_VECTOR_DB_PATH: /data/chatbot_data/vector_db
+      CHATBOT_SCRAPER_DB_URL: sqlite+aiosqlite:////data/akirs.db
     volumes:
-      - ./data:/data
-    ports:
-      - "8000:8000"
-    command: uvicorn akirs.api.app:app --host 0.0.0.0 --port 8000
+      - akirs-data:/data
+    # Coolify routes external traffic to this port. Do not also publish a
+    # host port unless you know why you need one.
+    expose:
+      - "8000"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+    restart: unless-stopped
+    # CMD from Dockerfile: uvicorn backend.main:app --host 0.0.0.0 --port 8000
+
+  # CPU-only LLM serving via llama.cpp (OpenAI-compatible API used by the
+  # chatbot). The GGUF model is NOT in git — upload it once into the
+  # `akirs-models` volume at /models/gemma-3-1b-it-Q4_K_M.gguf
+  # (Coolify → this service → Storages → upload file).
+  llamacpp:
+    image: ghcr.io/ggml-org/llama.cpp:server
+    volumes:
+      - akirs-models:/models:ro
+    # No host port published — only the `api` service talks to it.
+    command: >
+      -m /models/gemma-3-1b-it-Q4_K_M.gguf
+      --host 0.0.0.0 --port 8080
+      -c 2048
+      -t 4
+      -ngl 0
+      --parallel 1
+      --jinja
+      --cache-type-k q8_0
+      --cache-type-v q8_0
+    restart: unless-stopped
 
   worker:
-    profiles: ["full"]
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: akirs-worker
     depends_on:
       redis:
         condition: service_healthy
+      api:
+        condition: service_started
     environment:
       DATABASE_URL: sqlite+aiosqlite:////data/akirs.db
       DATABASE_URL_SYNC: sqlite:////data/akirs.db
       REDIS_URL: redis://redis:6379/0
       FB_ADS_HEADLESS: "true"
+      RECON_BROWSER_HEADLESS: "true"
+      OUTPUT_DIR: /data/output
+      CHATBOT_ENABLED: "false"
     volumes:
-      - ./data:/data
-    command: celery -A akirs.tasks.celery_app worker --loglevel=info --concurrency=2
+      - akirs-data:/data
+    restart: unless-stopped
+    command: >
+      celery -A src.tasks.celery_app:celery_app worker
+      --loglevel=info
+      --queues=scrape,recon,akirs
+      --concurrency=1
+
+volumes:
+  akirs-data:
+  akirs-models:
