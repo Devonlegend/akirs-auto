@@ -1676,9 +1676,14 @@ input[type="range"] {
   background: var(--surface);
   border: 1px solid var(--outline);
   border-radius: 8px;
+  color: inherit;
+  cursor: pointer;
   display: flex;
+  font: inherit;
   gap: 12px;
   padding: 14px;
+  text-align: left;
+  width: 100%;
 }
 
 .quick-action > span {

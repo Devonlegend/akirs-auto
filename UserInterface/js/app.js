@@ -751,6 +751,17 @@ function quickAction(title, body, iconName, href) {
   `;
 }
 
+// A "Try asking" shortcut that opens the assistant and sends the question,
+// instead of navigating. The button's label doubles as the question text.
+function quickAsk(title, body, iconName) {
+  return `
+    <button class="quick-action" type="button" data-ask="${escapeHtml(title)}">
+      <span>${icon(iconName)}</span>
+      <div><strong>${escapeHtml(title)}</strong><p class="muted">${escapeHtml(body)}</p></div>
+    </button>
+  `;
+}
+
 function renderScraper() {
   const job = state.currentJob;
   ensureScraperLocationDefaults();
@@ -1312,9 +1323,9 @@ function renderAssistant() {
         <section class="panel span-4">
           <div class="panel__header"><h2>${icon("help")} Try asking</h2></div>
           <div class="list-stack">
-            ${quickAction("What is PAYE?", "How Pay-As-You-Earn works for employers", "payments", "#/assistant")}
-            ${quickAction("How do I get an AISTIN?", "Register for a state Taxpayer ID", "badge", "#/assistant")}
-            ${quickAction("How do I validate a TCC?", "Confirm a Tax Clearance Certificate", "verified", "#/assistant")}
+            ${quickAsk("What is PAYE?", "How Pay-As-You-Earn works for employers", "payments")}
+            ${quickAsk("How do I get an AISTIN?", "Register for a state Taxpayer ID", "badge")}
+            ${quickAsk("How do I validate a TCC?", "Confirm a Tax Clearance Certificate", "verified")}
           </div>
         </section>
       </div>
@@ -1861,6 +1872,11 @@ function bindPageEvents(route) {
   document.querySelector("[data-refresh-data]")?.addEventListener("click", () => loadData());
   document.querySelector("[data-open-assistant]")?.addEventListener("click", () => {
     window.akirsChat?.open?.();
+  });
+  document.querySelectorAll("[data-ask]").forEach((button) => {
+    button.addEventListener("click", () => {
+      window.akirsChat?.ask?.(button.dataset.ask);
+    });
   });
   document.querySelector("[data-new-scrape]")?.addEventListener("click", () => {
     state.currentJob = null;
