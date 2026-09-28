@@ -1,6 +1,8 @@
 # Production Plan — AKIRS RAG Chatbot (CPU-only server, llama.cpp)
 
-Status: **PLAN ONLY — not implemented.**
+Status: **IN PROGRESS** — backend + config + factory + tests + compose wired
+(checklist at the bottom). Remaining: download the GGUF onto the server, run
+`llama-server`, smoke-test, benchmark, and lock down the public API surface.
 
 The production server is **CPU-only (no GPU)**. We will serve generation with
 **llama.cpp** (`llama-server`) instead of vLLM. vLLM is GPU-first; its CPU
@@ -15,11 +17,14 @@ production.
 ## 1. Decision
 
 - **LLM serving:** llama.cpp `llama-server` (CPU), OpenAI-compatible HTTP API.
-- **Model:** Phi-4-mini-instruct, **GGUF, Q4_K_M** quant (fallback Q5_K_M if
-  quality matters more than speed).
-- **Why:** purpose-built for CPU inference, tight control over threads/batch/
-  quant, single static binary or container, OpenAI-compatible so it plugs into
-  the existing `LLMBackend` seam.
+- **Model:** **Gemma 3 1B (instruction-tuned)**, **GGUF, Q4_K_M** quant.
+  Picked for CPU serving to multiple users: ~40% fewer FLOPs than a 1.7B
+  model and standard attention, so decode is roughly 25-45 tok/s on a modern
+  8-core CPU vs 15-25 tok/s for Qwen 3 1.7B or 8-15 tok/s for Phi-4-mini.
+  Trade-off: smaller = weaker grounding, so the RAG retrieval must be tight.
+- **Why llama.cpp:** purpose-built for CPU inference, tight control over
+  threads/batch/quant, single static binary or container, OpenAI-compatible
+  so it plugs into the existing `LLMBackend` seam.
 
 ---
 
@@ -45,10 +50,11 @@ optional hooks in `pipeline.py:295` (`prepare`) / `pipeline.py:304` (`close`).
 ## 3. llama.cpp serving
 
 ### 3.1 Get the model
-- Obtain a pre-quantized GGUF of `Phi-4-mini-instruct` (community quants on
-  Hugging Face — e.g. bartowski / unsloth), file such as
-  `Phi-4-mini-instruct-Q4_K_M.gguf`.
+- Obtain a pre-quantized GGUF of `gemma-3-1b-it` (community quants on Hugging
+  Face — e.g. bartowski / unsloth), file such as
+  `gemma-3-1b-it-Q4_K_M.gguf`.
 - Keep the GGUF on the host/volume so restarts don't re-download.
+- Note: Gemma 3's chat template is supported by llama.cpp via `--jinja`.
 
 ### 3.2 Run `llama-server`
 Either the binary or the official container
@@ -56,7 +62,7 @@ Either the binary or the official container
 
 ```bash
 llama-server \
-  -m /models/Phi-4-mini-instruct-Q4_K_M.gguf \
+  -m /models/gemma-3-1b-it-Q4_K_M.gguf \
   --host 0.0.0.0 --port 8080 \
   -c 2048 \          # context window (matches CHATBOT_OLLAMA_NUM_CTX today)
   -t $(nproc) \      # threads ≈ physical cores
@@ -94,7 +100,7 @@ New file: `chatbot/llm/llamacpp_backend.py`, subclassing `LLMBackend`
 ```python
 llm_backend: Literal["ollama", "llamacpp"] = "ollama"
 llamacpp_base_url: str = "http://localhost:8080"
-llamacpp_model: str = "phi-4-mini"      # label used in logs/health only
+llamacpp_model: str = "gemma-3-1b"      # label used in logs/health only
 llamacpp_api_key: str = ""              # optional
 ```
 
@@ -109,19 +115,21 @@ llamacpp_api_key: str = ""              # optional
 
 ## 4. CPU performance reality (set expectations)
 
-- Phi-4-mini (~3.8B) at Q4 on a modern multi-core CPU is roughly **single-digit
-  to low-teens tokens/sec**; prompt-eval (reading retrieved context) is faster
-  than decode. Measure on the target CPU before committing to SLOs.
+- Gemma 3 1B at Q4_K_M on a modern multi-core CPU is roughly **25-45 tokens/sec**
+  decode; prompt-eval (reading retrieved context) is faster than decode.
+  That's the speed needed to serve a small public widget. Measure on the target
+  CPU before committing to SLOs.
 - **Concurrency is limited**: CPU decode is compute-bound, so parallel chats
   share cores and each slows down. `--parallel 1` (queueing) is the sane default
   for a public widget.
 - Levers if latency is too high:
-  - Lower quant (Q4_K_M / Q3_K_M) or a smaller model (Qwen2.5-3B, Llama-3.2-3B,
-    Phi-3.5-mini) at Q4.
+  - Even smaller quant (Q3_K_M) — quality drops noticeably at 1B scale.
   - Smaller `-c` (fewer retrieved tokens). `CHATBOT_TOP_K` is already 5.
   - Cap `CHATBOT_LLM_MAX_TOKENS` (already 512) so answers don't ramble.
   - Tune `-t`, `-b`/`-ub`, and `--cache-type-k/v`.
   - Shorter system prompt / fewer context chunks.
+  - **Step up to Qwen 3 1.7B or Phi-4-mini** if the 1B model's grounding is
+    too weak — accept the latency hit as the cost of better answers.
 - The RAG layer is cheap on CPU: retrieval is a single short embedding per query
   (`chatbot/embeddings/embedder.py`), not a bottleneck.
 
@@ -187,17 +195,17 @@ llamacpp_api_key: str = ""              # optional
 
 ## 7. Task checklist
 
-- [ ] Download/place Phi-4-mini Q4_K_M GGUF on the server
+- [ ] Download/place Gemma 3 1B Q4_K_M GGUF (`gemma-3-1b-it-Q4_K_M.gguf`) on the server
 - [ ] Run `llama-server` (CPU flags: `-c 2048 -t <cores> -ngl 0 --parallel 1 --jinja`)
-- [ ] `chatbot/llm/llamacpp_backend.py` (generate, generate_stream, health_check, close)
-- [ ] `chatbot/config.py`: `llm_backend`, `llamacpp_base_url`, `llamacpp_model`, `llamacpp_api_key`
-- [ ] `build_llm_backend()` factory; use in `RAGPipeline.__init__`
-- [ ] Fix `RAGPipeline.health_check()` model reporting (`pipeline.py:315`)
-- [ ] Unit tests for the llama.cpp backend (faked HTTP)
+- [x] `chatbot/llm/llamacpp_backend.py` (generate, generate_stream, health_check, close)
+- [x] `chatbot/config.py`: `llm_backend`, `llamacpp_base_url`, `llamacpp_model`, `llamacpp_api_key`
+- [x] `build_llm_backend()` factory (`chatbot/llm/factory.py`); used in `RAGPipeline.__init__`
+- [x] Fix `RAGPipeline.health_check()` model reporting (`pipeline.py:315`)
+- [x] Unit tests for the llama.cpp backend (faked HTTP — `tests/test_llamacpp_backend.py`)
 - [ ] Vector store: volume/prebuild + gate startup ingest + multi-worker decision
-- [ ] Skip redundant KB re-embed via knowledge-dir hash
+- [x] Skip redundant KB re-embed via knowledge-dir hash (`chatbot/knowledge/loader.py`)
 - [ ] Lock down `/chatbot/*` (auth or remove main-app mount)
-- [ ] Add `llamacpp` service + fix commands in `docker-compose.yml`
+- [x] Add `llamacpp` service + fix commands in `docker-compose.yml`
 - [ ] Benchmark tokens/sec, TTFB, concurrency; set expectations
 - [ ] Add token/TTFB metrics
 
