@@ -1,0 +1,33 @@
+# llama.cpp CPU inference server with the Gemma 3 1B GGUF baked in.
+#
+# Building the model into the image makes deploys fully reproducible — no
+# manual GGUF upload step into a volume. The trade-off is a bigger image
+# (~1.6 GB total: ~800 MB base + ~800 MB GGUF), but runtime performance is
+# identical to reading from a mounted volume.
+#
+# The GGUF file itself is NOT in git (too large). Place it at
+# models/gemma-3-1b-it-Q4_K_M.gguf before building:
+#
+#   huggingface-cli download bartowski/gemma-3-1b-it-GGUF \
+#       gemma-3-1b-it-Q4_K_M.gguf --local-dir ./models
+#
+# Then `docker compose build llamacpp` (or let Coolify build it).
+
+FROM ghcr.io/ggml-org/llama.cpp:server
+
+# Model file. models/ is intentionally NOT in .dockerignore so this COPY works.
+# The build fails fast here if you haven't placed the GGUF — better than
+# silently shipping an image with no model.
+COPY models/gemma-3-1b-it-Q4_K_M.gguf /models/gemma-3-1b-it-Q4_K_M.gguf
+
+# Default command matches docker-compose.yml's llamacpp.command. Kept here so
+# the image is runnable standalone (docker run -p 8080:8080 ...) without any
+# flags. Compose can still override `command:` if needed.
+CMD ["-m", "/models/gemma-3-1b-it-Q4_K_M.gguf", \
+     "--host", "0.0.0.0", "--port", "8080", \
+     "-c", "2048", \
+     "-t", "4", \
+     "-ngl", "0", \
+     "--parallel", "1", \
+     "--jinja", \
+     "--cache-type-k", "q8_0", "--cache-type-v", "q8_0"]
