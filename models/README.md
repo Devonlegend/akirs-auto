@@ -1,49 +1,30 @@
 # Models directory
 
-Place GGUF model files here before building the `llamacpp` Docker image.
+This directory is a placeholder. **GGUF model files are not committed to git**
+(they're ~800 MB each) and are not baked into the Docker image.
 
-## Required file
+## How the model gets onto the server
 
-```
-gemma-3-1b-it-Q4_K_M.gguf
-```
+The `llamacpp` service downloads the GGUF at container start into the
+`akirs-models` Docker volume. The URL and filename are set via environment
+variables in `docker-compose.yml`:
 
-## Download
-
-```bash
-# Using huggingface_hub (recommended)
-pip install huggingface-hub
-huggingface-cli download bartowski/gemma-3-1b-it-GGUF \
-    gemma-3-1b-it-Q4_K_M.gguf \
-    --local-dir ./models
-
-# Or with curl (if you have a direct URL)
-curl -L -o models/gemma-3-1b-it-Q4_K_M.gguf \
-    "https://huggingface.co/bartowski/gemma-3-1b-it-GGUF/resolve/main/gemma-3-1b-it-Q4_K_M.gguf"
+```yaml
+llamacpp:
+  environment:
+    MODEL_URL: "https://huggingface.co/bartowski/gemma-3-1b-it-GGUF/resolve/main/gemma-3-1b-it-Q4_K_M.gguf"
+    MODEL_FILE: "gemma-3-1b-it-Q4_K_M.gguf"
 ```
 
-## Build
-
-Once the GGUF is in place:
-
-```bash
-docker compose build llamacpp
-docker compose up llamacpp
-```
-
-The model is baked into the image at `/models/gemma-3-1b-it-Q4_K_M.gguf` — no
-volume mount needed.
-
-## Size
-
-`gemma-3-1b-it-Q4_K_M.gguf` is ~800 MB. The final `llamacpp` image is ~1.6 GB
-(base image + model).
+The download is cached in the volume — restarts don't re-download. To force a
+fresh download, set `FORCE_REDOWNLOAD=1` on the llamacpp service or wipe the
+volume.
 
 ## Switching models
 
-1. Download a different GGUF (e.g. Qwen 3 1.7B, Phi-4-mini) into this directory.
-2. Update `Dockerfile.llamacpp`'s `COPY` and `CMD` to reference the new filename.
-3. Update `CHATBOT_LLAMACPP_MODEL` in `docker-compose.yml` to match.
-4. Rebuild: `docker compose build llamacpp && docker compose up -d llamacpp`.
+1. Update `MODEL_URL` and `MODEL_FILE` in `docker-compose.yml`.
+2. Update `CHATBOT_LLAMACPP_MODEL` to match.
+3. Update the `-m /models/<file>` path in the `CMD` of `Dockerfile.llamacpp`.
+4. Set `FORCE_REDOWNLOAD=1` once (or wipe the volume), redeploy, then unset it.
 
 The knowledge base hash is independent of the model — no re-ingest needed.
