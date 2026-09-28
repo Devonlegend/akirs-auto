@@ -1,0 +1,22 @@
+# Local testing override — NOT used by Coolify (it only reads docker-compose.yml
+# unless you explicitly add this file to the compose file list there).
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.local.yml up --build
+#
+# Differences vs. production:
+#   - No llamacpp service (the GGUF model isn't in git / on your machine),
+#     so the chatbot is disabled and the api no longer depends on llamacpp.
+#   - Port 8000 published on localhost so you can open the UI directly.
+
+services:
+  api:
+    depends_on: !override
+      redis:
+        condition: service_healthy
+    environment:
+      CHATBOT_ENABLED: "false"
+    ports:
+      - "8000:8000"
+
+  llamacpp: !reset null
