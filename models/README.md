@@ -12,9 +12,21 @@ variables in `docker-compose.yml`:
 ```yaml
 llamacpp:
   environment:
-    MODEL_URL: "https://huggingface.co/bartowski/gemma-3-1b-it-GGUF/resolve/main/gemma-3-1b-it-Q4_K_M.gguf"
+    MODEL_URL: "https://huggingface.co/unsloth/gemma-3-1b-it-GGUF/resolve/main/gemma-3-1b-it-Q4_K_M.gguf"
     MODEL_FILE: "gemma-3-1b-it-Q4_K_M.gguf"
 ```
+
+## Local development
+
+If you want to run `llama-server` directly on your machine (not in Docker),
+download the model with `hf`:
+
+```bash
+pip install huggingface-hub
+hf download unsloth/gemma-3-1b-it-GGUF gemma-3-1b-it-Q4_K_M.gguf --local-dir ./models
+```
+
+Then point `CHATBOT_LLAMACPP_BASE_URL` at your local `llama-server` process.
 
 The download is cached in the volume — restarts don't re-download. To force a
 fresh download, set `FORCE_REDOWNLOAD=1` on the llamacpp service or wipe the

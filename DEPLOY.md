@@ -49,7 +49,7 @@ URL and filename are set in `docker-compose.yml`:
 ```yaml
 llamacpp:
   environment:
-    MODEL_URL: "https://huggingface.co/bartowski/gemma-3-1b-it-GGUF/resolve/main/gemma-3-1b-it-Q4_K_M.gguf"
+    MODEL_URL: "https://huggingface.co/unsloth/gemma-3-1b-it-GGUF/resolve/main/gemma-3-1b-it-Q4_K_M.gguf"
     MODEL_FILE: "gemma-3-1b-it-Q4_K_M.gguf"
 ```
 

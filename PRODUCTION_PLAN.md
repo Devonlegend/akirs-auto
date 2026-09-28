@@ -51,7 +51,7 @@ optional hooks in `pipeline.py:295` (`prepare`) / `pipeline.py:304` (`close`).
 
 ### 3.1 Get the model
 - Obtain a pre-quantized GGUF of `gemma-3-1b-it` (community quants on Hugging
-  Face — e.g. bartowski / unsloth), file such as
+  Face — we use `unsloth/gemma-3-1b-it-GGUF`), file such as
   `gemma-3-1b-it-Q4_K_M.gguf`.
 - Keep the GGUF on the host/volume so restarts don't re-download.
 - Note: Gemma 3's chat template is supported by llama.cpp via `--jinja`.
