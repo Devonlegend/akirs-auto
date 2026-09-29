@@ -162,7 +162,7 @@ class RAGPipeline:
             }
 
         # 2. Format context.
-        context = format_context(relevant)
+        context = format_context(relevant, max_tokens=settings.context_max_tokens)
 
         # 3. Build prompts.
         sys_prompt, user_context = build_prompt(
@@ -263,7 +263,7 @@ class RAGPipeline:
                    "retrieved_count": 0}
             return
 
-        context = format_context(relevant)
+        context = format_context(relevant, max_tokens=settings.context_max_tokens)
         sys_prompt, user_context = build_prompt(
             question=question,
             context=context,

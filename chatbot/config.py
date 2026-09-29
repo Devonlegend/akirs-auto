@@ -120,18 +120,29 @@ class ChatbotSettings(BaseSettings):
 
     # -- Retrieval ----------------------------------------------------------
     top_k: int = Field(
-        default=5,
+        default=8,
         ge=1,
         le=50,
-        description="Default number of chunks to retrieve per query. 5 yields "
-        "~2500 extracted tokens of context instead of 10; prompt_eval scales "
-        "linearly so fewer chunks = faster first token.",
+        description="Default number of chunks to retrieve per query. 8 gives a "
+        "small model a better chance that the chunk actually answering a broad "
+        "question (e.g. 'how do I pay my tax') lands in the context window; "
+        "prompt_eval scales linearly so more chunks = slower first token.",
     )
     relevance_threshold: float = Field(
         default=0.3,
         ge=0.0,
         le=1.0,
         description="Minimum chunk score (1 - cosine_distance) to count as relevant context.",
+    )
+    context_max_tokens: int = Field(
+        default=2000,
+        ge=200,
+        le=8000,
+        description="Approximate token budget for the assembled retrieval "
+        "context passed to the LLM. Too small and the highest-value chunk "
+        "(e.g. the payment steps for 'how do I pay my tax') is dropped even "
+        "when retrieved; too large and a small model's context window fills "
+        "with noise and the first token slows.",
     )
 
     # -- Knowledge base -----------------------------------------------------
