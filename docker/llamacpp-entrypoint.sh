@@ -19,12 +19,46 @@ fi
 
 mkdir -p "$MODEL_DIR"
 
-if [ ! -f "$MODEL_PATH" ] || [ -n "$FORCE_REDOWNLOAD" ]; then
+# Expected byte size from the server's Content-Length header. Used to detect a
+# truncated download — an interrupted fetch leaves a too-small file that a bare
+# `[ -f ]` check would happily reuse, then llama-server crashes on load with
+# "tensor ... data is not within the file bounds, model is corrupted".
+expected_size() {
+  curl -fsSIL "$MODEL_URL" 2>/dev/null | grep -i '^content-length:' | tail -n1 | tr -dc '0-9'
+}
+
+download_model() {
   echo "[llamacpp] Downloading $MODEL_FILE from $MODEL_URL ..."
-  curl -fSL --retry 3 --retry-delay 5 -o "$MODEL_PATH" "$MODEL_URL"
-  echo "[llamacpp] Download complete: $(du -h "$MODEL_PATH" | cut -f1)"
+  # Download to a temp file and only move into place on success, so a killed
+  # download never leaves a partial file at the real path.
+  curl -fSL --retry 3 --retry-delay 5 -o "$MODEL_PATH.part" "$MODEL_URL"
+  local actual expected
+  actual=$(wc -c < "$MODEL_PATH.part" | tr -dc '0-9')
+  expected=$(expected_size)
+  if [ -n "$expected" ] && [ "$actual" != "$expected" ]; then
+    echo "[llamacpp] ERROR: downloaded size ${actual} != expected ${expected} bytes; discarding." >&2
+    rm -f "$MODEL_PATH.part"
+    exit 1
+  fi
+  mv -f "$MODEL_PATH.part" "$MODEL_PATH"
+  echo "[llamacpp] Download complete: $(du -h "$MODEL_PATH" | cut -f1) (${actual} bytes)"
+}
+
+if [ -n "$FORCE_REDOWNLOAD" ]; then
+  echo "[llamacpp] FORCE_REDOWNLOAD set — re-downloading."
+  download_model
+elif [ ! -f "$MODEL_PATH" ]; then
+  download_model
 else
-  echo "[llamacpp] $MODEL_FILE already present ($(du -h "$MODEL_PATH" | cut -f1)), skipping download."
+  # File exists — verify it isn't truncated before trusting it.
+  actual=$(wc -c < "$MODEL_PATH" | tr -dc '0-9')
+  expected=$(expected_size)
+  if [ -n "$expected" ] && [ "$actual" != "$expected" ]; then
+    echo "[llamacpp] $MODEL_FILE is truncated (${actual}/${expected} bytes) — re-downloading."
+    download_model
+  else
+    echo "[llamacpp] $MODEL_FILE already present ($(du -h "$MODEL_PATH" | cut -f1)), skipping download."
+  fi
 fi
 
 # The llama.cpp :server image installs the binary at /app/llama-server but does
