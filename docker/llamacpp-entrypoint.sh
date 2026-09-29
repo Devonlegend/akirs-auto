@@ -27,5 +27,17 @@ else
   echo "[llamacpp] $MODEL_FILE already present ($(du -h "$MODEL_PATH" | cut -f1)), skipping download."
 fi
 
-echo "[llamacpp] Starting llama-server with: $*"
-exec llama-server "$@"
+# The llama.cpp :server image installs the binary at /app/llama-server but does
+# NOT add /app to PATH, so a bare `exec llama-server` fails with "not found".
+# Resolve the absolute path, with fallbacks for older/newer image layouts.
+if [ -x /app/llama-server ]; then
+  SERVER_BIN=/app/llama-server
+elif command -v llama-server >/dev/null 2>&1; then
+  SERVER_BIN="$(command -v llama-server)"
+else
+  echo "[llamacpp] ERROR: llama-server binary not found (looked in /app and PATH)." >&2
+  exit 1
+fi
+
+echo "[llamacpp] Starting llama-server ($SERVER_BIN) with: $*"
+exec "$SERVER_BIN" "$@"
