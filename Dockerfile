@@ -18,18 +18,22 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgbm1 libpango-1.0-0 libcairo2 libasound2 \
     && rm -rf /var/lib/apt/lists/*
 
-# Python deps (project itself is NOT pip-installed; `src/`, `backend/`,
-# `chatbot/` are copied in below and imported via PYTHONPATH=/app/src).
-# Includes the `chatbot` extra since CHATBOT_ENABLED=true in production.
-COPY pyproject.toml uv.lock* ./
+# Python deps — installed EXACTLY as pinned in uv.lock (reproducible builds).
+# `uv export` emits a requirements.txt from the lockfile (default = the
+# project's base/runtime dependencies; the `dev` group is excluded). The
+# chatbot RAG stack (chromadb, sentence-transformers, tiktoken, rapidfuzz) is
+# part of the base deps, so it's included — matching CHATBOT_ENABLED=true in
+# production. Installing from the lockfile (instead of re-resolving unpinned
+# names with `uv pip install`) prevents "works locally, breaks in the
+# container" dependency drift and Docker layer-cache surprises.
+# The project itself is NOT installed; `src/`, `backend/`, `chatbot/` are
+# copied in below and imported via PYTHONPATH=/app/src.
+COPY pyproject.toml uv.lock ./
 RUN pip install --no-cache-dir uv && \
-    uv pip install --system --no-cache \
-        fastapi "uvicorn[standard]" pydantic pydantic-settings \
-        "sqlalchemy[asyncio]" aiosqlite alembic \
-        "celery[redis]" redis httpx beautifulsoup4 \
-        "pydantic-ai-slim[openai]" "starlette-admin>=1.0.1" itsdangerous \
-        playwright watchdog \
-        chromadb sentence-transformers tiktoken rapidfuzz
+    uv export --frozen --no-dev --no-emit-project --no-hashes \
+        -o /tmp/requirements.txt && \
+    uv pip install --system --no-cache -r /tmp/requirements.txt && \
+    rm /tmp/requirements.txt
 
 # Browser runtime (worker + any in-process scraping).
 RUN playwright install chromium
