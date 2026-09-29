@@ -73,8 +73,11 @@ whatever the source:
    ```
 2. Install dependencies:
    ```bash
-   uv sync --extra chatbot
+   uv sync
    ```
+   (The chatbot RAG stack — `chromadb`, `sentence-transformers`, `tiktoken`,
+   `rapidfuzz` — is part of the project's required dependencies, so a plain
+   `uv sync` installs it. No `--extra` flag is needed.)
 
 ## Usage
 
@@ -219,7 +222,7 @@ chatbot/
 ## Tests
 
 ```bash
-uv run --extra dev --extra chatbot pytest \
+uv run --extra dev pytest \
   tests/test_chatbot_nlp.py tests/test_chatbot_connector.py \
   tests/test_chatbot_pipeline.py tests/test_chatbot_ollama.py \
   tests/test_chatbot_retriever.py -v

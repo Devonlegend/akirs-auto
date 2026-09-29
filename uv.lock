@@ -126,6 +126,7 @@ dependencies = [
     { name = "alembic" },
     { name = "beautifulsoup4" },
     { name = "celery", extra = ["redis"] },
+    { name = "chromadb" },
     { name = "fastapi" },
     { name = "httpx" },
     { name = "itsdangerous" },
@@ -133,20 +134,17 @@ dependencies = [
     { name = "pydantic" },
     { name = "pydantic-ai-slim", extra = ["openai"] },
     { name = "pydantic-settings" },
+    { name = "rapidfuzz" },
     { name = "redis" },
+    { name = "sentence-transformers" },
     { name = "sqlalchemy", extra = ["asyncio"] },
     { name = "starlette-admin" },
+    { name = "tiktoken" },
     { name = "uvicorn", extra = ["standard"] },
     { name = "watchdog" },
 ]
 
 [package.optional-dependencies]
-chatbot = [
-    { name = "chromadb" },
-    { name = "rapidfuzz" },
-    { name = "sentence-transformers" },
-    { name = "tiktoken" },
-]
 dev = [
     { name = "pytest" },
     { name = "pytest-asyncio" },
@@ -158,7 +156,7 @@ requires-dist = [
     { name = "alembic", specifier = ">=1.14.0" },
     { name = "beautifulsoup4", specifier = ">=4.12.0" },
     { name = "celery", extras = ["redis"], specifier = ">=5.4.0" },
-    { name = "chromadb", marker = "extra == 'chatbot'", specifier = ">=0.5.0" },
+    { name = "chromadb", specifier = ">=0.5.0" },
     { name = "fastapi", specifier = ">=0.115.0" },
     { name = "httpx", specifier = ">=0.27.0" },
     { name = "itsdangerous", specifier = ">=2.2.0" },
@@ -168,16 +166,16 @@ requires-dist = [
     { name = "pydantic-settings", specifier = ">=2.6.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.3.0" },
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.24.0" },
-    { name = "rapidfuzz", marker = "extra == 'chatbot'", specifier = ">=3.0.0" },
+    { name = "rapidfuzz", specifier = ">=3.0.0" },
     { name = "redis", specifier = ">=5.2.0" },
-    { name = "sentence-transformers", marker = "extra == 'chatbot'", specifier = ">=3.0.0" },
+    { name = "sentence-transformers", specifier = ">=3.0.0" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0.36" },
-    { name = "starlette-admin", specifier = ">=0.16.1" },
-    { name = "tiktoken", marker = "extra == 'chatbot'", specifier = ">=0.7.0" },
+    { name = "starlette-admin", specifier = ">=1.0.1" },
+    { name = "tiktoken", specifier = ">=0.7.0" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.32.0" },
     { name = "watchdog", specifier = ">=6.0.0" },
 ]
-provides-extras = ["dev", "chatbot"]
+provides-extras = ["dev"]
 
 [[package]]
 name = "alembic"
@@ -2824,16 +2822,17 @@ wheels = [
 
 [[package]]
 name = "starlette-admin"
-version = "0.16.1"
+version = "1.0.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
+    { name = "itsdangerous" },
     { name = "jinja2" },
     { name = "python-multipart" },
     { name = "starlette" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/8d/36/a566ba401ba9cbf5da74a7697e0ae3d1294a8ab7211bb1d7d18f0ce42b3f/starlette_admin-0.16.1.tar.gz", hash = "sha256:f34bdba033f0a2a4b39188e8e70a684956ef6b774db01762f44d022cde418b3a", size = 2104666, upload-time = "2026-06-06T20:10:40.307Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ec/d5/c17af70c83c252195e5daa3e33a6884533c62a1cd4069c511da98c02225f/starlette_admin-1.0.1.tar.gz", hash = "sha256:0a818db92cbf5a2e24b3f1640028d6468d905228b20b8f6621d0ce97841122f8", size = 1260648, upload-time = "2026-08-25T02:59:17.282Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/5d/7c/add7d4be6690fb61f4d30b672e544b1ac541c824f05a7de50ff5d8985db5/starlette_admin-0.16.1-py3-none-any.whl", hash = "sha256:a5e6cb0beb2e9bdc65b07dbb4bd01726aaad34764595e3bc3ff8578e698ff98a", size = 2176514, upload-time = "2026-06-06T20:10:42.308Z" },
+    { url = "https://files.pythonhosted.org/packages/f5/cf/fec1c43aaaa6e5a328f2f13b5eb049c393ea7c6d6f19c6aa772d2f11b364/starlette_admin-1.0.1-py3-none-any.whl", hash = "sha256:846b97e7a08b6bc453a91ce4ea64d1fe241de3b4555a0207c39c520874dd2ae7", size = 1388032, upload-time = "2026-08-25T02:59:15.951Z" },
 ]
 
 [[package]]

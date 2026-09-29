@@ -41,27 +41,23 @@ class AdminAuthProvider(AuthProvider):
         password: str,
         remember_me: bool,
         request: Request,
-        response: Response,
-    ) -> Response:
+    ) -> Response | None:
         async with AsyncSessionLocal() as session:
             user = await authenticate_user(session, username.strip(), password)
         if user is None or user.account_type != AccountType.Admin:
             raise LoginFailed("Invalid admin credentials")
         request.session.update({"admin_user": user.username, "display_name": user.display_name})
-        return response
+        return None
 
-    async def is_authenticated(self, request: Request) -> bool:
-        return request.session.get("admin_user") is not None
-
-    def get_admin_user(self, request: Request) -> AdminUser | None:
+    async def authenticate(self, request: Request) -> AdminUser | None:
         label = request.session.get("display_name") or request.session.get("admin_user")
         if not label:
             return None
         return AdminUser(username=label)
 
-    async def logout(self, request: Request, response: Response) -> Response:
+    async def logout(self, request: Request) -> Response | None:
         request.session.clear()
-        return response
+        return None
 
 
 class _PasswordHashingView(ModelView):
@@ -125,9 +121,10 @@ def build_admin(engine: AsyncEngine) -> SqlaAdmin:
         title="AKIRS Admin",
         base_url="/admin",
         auth_provider=AdminAuthProvider(),
+        secret_key=SESSION_SECRET,
         middlewares=[Middleware(SessionMiddleware, secret_key=SESSION_SECRET)],
     )
-    admin.add_view(UserView(User, icon="fa fa-user", label="Users"))
-    admin.add_view(AdminView(Admin, icon="fa fa-user-shield", label="Admins"))
-    admin.add_view(EmbedKeyView(EmbedKey, icon="fa fa-key", label="Embed Keys"))
+    admin.add_view(UserView(User, icon="fa fa-user", menu_label="Users"))
+    admin.add_view(AdminView(Admin, icon="fa fa-user-shield", menu_label="Admins"))
+    admin.add_view(EmbedKeyView(EmbedKey, icon="fa fa-key", menu_label="Embed Keys"))
     return admin

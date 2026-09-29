@@ -27,7 +27,7 @@ RUN pip install --no-cache-dir uv && \
         fastapi "uvicorn[standard]" pydantic pydantic-settings \
         "sqlalchemy[asyncio]" aiosqlite alembic \
         "celery[redis]" redis httpx beautifulsoup4 \
-        "pydantic-ai-slim[openai]" starlette-admin itsdangerous \
+        "pydantic-ai-slim[openai]" "starlette-admin>=1.0.1" itsdangerous \
         playwright watchdog \
         chromadb sentence-transformers tiktoken rapidfuzz
 
