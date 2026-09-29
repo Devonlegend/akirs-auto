@@ -376,7 +376,12 @@ async function loadJobs(shouldRender = true) {
     const jobs = await window.akirsApi.fetchJobs();
     state.jobs = jobs.filter(jobBelongsToCurrentUser);
     if (!state.currentJob && state.jobs.length) {
-      state.currentJob = state.jobs[0];
+      // Auto-select the most recent ACTIVELY-RUNNING job so the live panel
+      // follows real work. Do NOT auto-select a job stuck in "queued" — an
+      // orphaned queued job (never dispatched, e.g. Celery was down) would
+      // otherwise sit selected and hide the live panel behind a dead job.
+      state.currentJob =
+        state.jobs.find((job) => job.status === "running") || null;
     } else if (state.currentJob) {
       const fresh = state.jobs.find((job) => job.job_id === state.currentJob.job_id);
       state.currentJob = fresh || null;
@@ -912,6 +917,9 @@ function scraperSignalPanel() {
           </div>
           <div class="scraper-controls">
             ${
+              // Always offer Start so a stuck/orphaned queued job can never
+              // block queueing a fresh scrape. When a job IS selected and
+              // controllable, ALSO show its pause/resume/end controls.
               controllable
                 ? `<button class="button button--danger" type="button" data-stop-job="${job.job_id}">${icon("stop")} End</button>
                    ${
@@ -919,8 +927,9 @@ function scraperSignalPanel() {
                        ? `<button class="button button--primary" type="button" data-resume-job="${job.job_id}">${icon("play_arrow")} Resume</button>`
                        : `<button class="button" type="button" data-pause-job="${job.job_id}">${icon("pause")} Pause</button>`
                    }`
-                : `<button id="start-scraping" class="button button--primary" type="button" data-start-scrape>${icon("play_arrow")} Start</button>`
+                : ""
             }
+            <button id="start-scraping" class="button button--primary" type="button" data-start-scrape>${icon("play_arrow")} Start</button>
             <button class="button" type="button" data-new-scrape>${icon("add")} New Job</button>
           </div>
           <div class="job-switcher__list">
