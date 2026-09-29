@@ -85,6 +85,13 @@ services:
       RECON_BROWSER_HEADLESS: "true"
       OUTPUT_DIR: /data/output
       CHATBOT_ENABLED: "false"
+      # The worker runs the post-recon chatbot re-index (finalize_recon ->
+      # run_scraper_ingest). It must write to the SAME ChromaDB path the api
+      # reads, otherwise the re-index lands in an ephemeral container path and
+      # the assistant never sees new businesses. Keep in sync with the api
+      # service's CHATBOT_VECTOR_DB_PATH.
+      CHATBOT_VECTOR_DB_PATH: /data/chatbot_data/vector_db
+      CHATBOT_SCRAPER_DB_URL: sqlite+aiosqlite:////data/akirs.db
     volumes:
       - akirs-data:/data
     restart: unless-stopped

@@ -183,13 +183,23 @@ class FacebookAdsLibraryPage:
         scroll_count = 0
         seen_fingerprints: set[str] = set()
         
-        # Debug dump if no ads found on initial load
+        # Debug dump if no ads found on initial load. Write under
+        # settings.output_dir (OUTPUT_DIR=/data/output in the container) — a
+        # relative "output/..." path resolves to /app/output, which is NOT
+        # created in the image and would silently drop the diagnostic we need
+        # to tell "FB blocked us" apart from "selector broke".
         if await self.visible_ad_count() == 0:
-            logger.warning("0 ad details buttons found on initial load, dumping debug info...")
+            logger.warning(
+                "0 ad details buttons found on initial load — dumping debug info "
+                "(this usually means Facebook served a consent wall / rate-limit / "
+                "'something went wrong' page rather than ad results)."
+            )
             try:
-                await self.page.screenshot(path="output/debug_fb.png", full_page=True)
-                with open("output/debug_fb.html", "w") as f:
-                    f.write(await self.page.content())
+                debug_dir = self.settings.output_dir
+                debug_dir.mkdir(parents=True, exist_ok=True)
+                await self.page.screenshot(path=str(debug_dir / "debug_fb.png"), full_page=True)
+                (debug_dir / "debug_fb.html").write_text(await self.page.content(), encoding="utf-8")
+                logger.warning("FB debug dump written to %s", debug_dir.resolve())
             except Exception as e:
                 logger.error(f"Failed to dump debug files: {e}")
 
@@ -214,6 +224,10 @@ class FacebookAdsLibraryPage:
 
             await self._scroll_to_load_more()
             scroll_count += 1
+            logger.debug(
+                "iter_ad_cards: scroll %d/%d — yielded %d/%d ads (new this pass: %d)",
+                scroll_count, max_scrolls, yielded, target_count, new_in_pass,
+            )
             # Terminate on lack of NEW ad cards, not on page-height change. Facebook
             # lazy-loads spinners/skeletons/footers that grow document height without
             # adding ads, so height is an unreliable progress signal — keying off it

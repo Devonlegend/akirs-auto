@@ -117,7 +117,10 @@ async def _run(job_id: int, params: dict[str, Any], celery_task_id: str | None) 
                     logger.info("Phase 1: job %s stopped before keyword '%s'", job_id, spec.keyword)
                     break
 
-                logger.info(f"Phase 1: scraping keyword='{spec.keyword}' location='{spec.location}'")
+                logger.info(
+                    "Phase 1: [%d/%d] scraping keyword='%s' location='%s' (target=%d ads)",
+                    keywords_done + 1, keywords_total, spec.keyword, spec.location, target,
+                )
                 async with AsyncSessionLocal() as session:
                     geo_repo = GeographyRepository(session)
                     kr_repo = KeywordRunRepository(session)
@@ -138,6 +141,10 @@ async def _run(job_id: int, params: dict[str, Any], celery_task_id: str | None) 
 
                 try:
                     ads = await scraper.scrape(target_count=target)
+                    logger.info(
+                        "Phase 1: keyword='%s' -> %d ads extracted",
+                        spec.keyword, len(ads),
+                    )
                 except Exception as e:
                     logger.exception(f"Scrape failed for keyword '{spec.keyword}': {e}")
                     ads = []

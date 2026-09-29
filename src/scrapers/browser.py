@@ -11,6 +11,11 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def launch_browser(headless: bool = True, user_data_dir: str | Path | None = None):
     """Yield (browser, context, page) and clean them up on exit."""
+    logger.info(
+        "[browser] launching Chromium (headless=%s, profile=%s)",
+        headless,
+        user_data_dir if user_data_dir else "ephemeral",
+    )
     async with async_playwright() as p:
         browser: Browser | None = None
         args = [
@@ -27,17 +32,28 @@ async def launch_browser(headless: bool = True, user_data_dir: str | Path | None
             "ignore_https_errors": True,
         }
 
-        if user_data_dir:
-            Path(user_data_dir).mkdir(parents=True, exist_ok=True)
-            context: BrowserContext = await p.chromium.launch_persistent_context(
-                str(user_data_dir),
-                headless=headless,
-                args=args,
-                **context_options,
+        try:
+            if user_data_dir:
+                Path(user_data_dir).mkdir(parents=True, exist_ok=True)
+                context: BrowserContext = await p.chromium.launch_persistent_context(
+                    str(user_data_dir),
+                    headless=headless,
+                    args=args,
+                    **context_options,
+                )
+            else:
+                browser = await p.chromium.launch(headless=headless, args=args)
+                context = await browser.new_context(**context_options)
+        except Exception:
+            # A failed launch (missing chromium binary / missing system libs) is
+            # the classic production breakage — surface it loudly, not as a
+            # downstream "page is None" error.
+            logger.exception(
+                "[browser] FAILED to launch Chromium — check that 'playwright "
+                "install chromium' ran and the system libs are present."
             )
-        else:
-            browser = await p.chromium.launch(headless=headless, args=args)
-            context = await browser.new_context(**context_options)
+            raise
+        logger.info("[browser] Chromium ready.")
 
         # Comprehensive Stealth Injection
         stealth_js = """
@@ -76,3 +92,4 @@ async def launch_browser(headless: bool = True, user_data_dir: str | Path | None
                     await browser.close()
                 except Exception as exc:  # noqa: BLE001
                     logger.debug("Browser was already closed: %s", exc)
+            logger.info("[browser] Chromium closed.")

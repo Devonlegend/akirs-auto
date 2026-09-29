@@ -23,12 +23,14 @@ class FacebookAdsScraper(AbstractScraper):
         ad_category: str = "All ads",
         **_: Any,
     ) -> None:
+        logger.info("[fb-ads] setup: navigating to Ads Library (country=%s)", country)
         await self.facebook_page.navigate()
         if country:
             await self.facebook_page.select_country(country)
         await self.facebook_page.select_ad_category(ad_category)
         if keyword:
             await self.facebook_page.search_keyword(keyword)
+        logger.info("[fb-ads] setup complete — %d ad cards visible", await self.facebook_page.visible_ad_count())
 
     async def scrape(self, target_count: int) -> list[dict]:
         """Iterate ads, open each dialog, extract, close. Return list of raw ad dicts."""
